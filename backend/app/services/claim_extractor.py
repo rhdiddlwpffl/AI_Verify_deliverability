@@ -23,6 +23,7 @@ from app.services.vulnerability_rules import detect_rule_flags
 logger = logging.getLogger(__name__)
 
 _MAX_REASON_CHARS = 200
+_MAX_QUERY_CHARS = 80
 _MAX_ATTEMPTS = 2  # 첫 시도 + 형식 오류 시 1회 재시도
 _VALID_EFFORTS = {"low", "medium", "high", "xhigh", "max"}
 
@@ -50,6 +51,7 @@ class ClaimAnalysis:
     check_worthy: bool
     flags: list[str]  # 코드 규칙 신호 + Claude 신호
     reason: str
+    search_query: str = ""  # 위키백과 검색에 쓸 짧은 검색어. 확인 대상이 아닌 문장은 빈 문자열
 
 
 @dataclass
@@ -81,8 +83,9 @@ _RESPONSE_SCHEMA: dict[str, Any] = {
                         "items": {"type": "string", "enum": [f.value for f in LLM_FLAGS]},
                     },
                     "reason": {"type": "string"},
+                    "search_query": {"type": "string"},
                 },
-                "required": ["idx", "claim_type", "check_worthy", "flags", "reason"],
+                "required": ["idx", "claim_type", "check_worthy", "flags", "reason", "search_query"],
                 "additionalProperties": False,
             },
         }
@@ -146,6 +149,15 @@ def parse_and_validate(raw: str, sentences: list[Sentence]) -> list[ClaimAnalysi
         # 코드 규칙 신호를 앞에 두고, Claude 신호를 뒤에 붙인다. (중복 제거, 순서 유지)
         flags = list(dict.fromkeys([*detect_rule_flags(sentence.text), *llm_flags]))
         reason = str(item.get("reason", "")).strip()[:_MAX_REASON_CHARS]
+
+        raw_query = item.get("search_query")
+        if not isinstance(raw_query, str):
+            raise ValueError(f"idx {sentence.idx}: search_query가 문자열이 아닙니다.")
+        # 공백 정리 후 길이 제한. 확인 대상이 아닌 문장은 검색하지 않으므로 항상 빈 문자열로 둔다.
+        query = " ".join(raw_query.split())[:_MAX_QUERY_CHARS].strip() if item["check_worthy"] else ""
+        if item["check_worthy"] and not query:
+            raise ValueError(f"idx {sentence.idx}: 확인 필요 문장인데 search_query가 비어 있습니다.")
+
         analyses.append(
             ClaimAnalysis(
                 sentence=sentence,
@@ -153,6 +165,7 @@ def parse_and_validate(raw: str, sentences: list[Sentence]) -> list[ClaimAnalysi
                 check_worthy=item["check_worthy"],
                 flags=flags,
                 reason=reason,
+                search_query=query,
             )
         )
     return analyses

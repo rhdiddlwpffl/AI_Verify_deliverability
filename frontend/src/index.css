@@ -305,6 +305,54 @@ button.mark {
   font-size: 0.9rem;
 }
 
+/* ---- 결과: 검색된 근거 후보 ---- */
+.evidence {
+  margin: 0.75rem 0 0;
+  padding-top: 0.75rem;
+  border-top: 1px dashed var(--border);
+  font-size: 0.95rem;
+}
+
+.evidence__title,
+.evidence__note {
+  margin: 0 0 0.25rem;
+}
+
+.evidence--failed {
+  color: var(--error-fg);
+}
+
+.sources {
+  display: grid;
+  gap: 0.5rem;
+  margin: 0.5rem 0;
+  padding: 0;
+  list-style: none;
+}
+
+.source {
+  padding: 0.5rem 0.75rem;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+
+.source a {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.source__snippet {
+  margin: 0.25rem 0 0;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.evidence__license {
+  margin: 0;
+  font-size: 0.8rem;
+}
+
 .footnote {
   margin-top: 1.5rem;
   font-size: 0.9rem;

@@ -1,5 +1,6 @@
 import type { Claim } from '../api/types'
 import { claimTypeLabel, flagLabel } from '../labels'
+import { EvidenceList } from './EvidenceList'
 
 interface Props {
   claim: Claim
@@ -28,6 +29,8 @@ export function ClaimCard({ claim, selected, onSelect }: Props) {
       </div>
 
       {claim.reason && <p className="card__reason">분류 이유: {claim.reason}</p>}
+
+      <EvidenceList claim={claim} />
 
       <button type="button" className="link-button" onClick={() => onSelect(claim.idx)}>
         원문에서 위치 보기

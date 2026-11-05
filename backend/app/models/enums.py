@@ -54,6 +54,16 @@ class Stance(StrEnum):
     NEUTRAL = "neutral"
 
 
+class SearchStatus(StrEnum):
+    """한 주장에 대한 검색 결과 상태. '찾지 못함'과 '검색 실패'는 의미가 다르므로 구분한다."""
+
+    NOT_SEARCHED = "not_searched"  # 확인 대상이 아니라서 검색하지 않음
+    FOUND = "found"  # 관련 문서를 찾음 (주장을 뒷받침하는지는 별개)
+    NONE = "none"  # 검색은 정상이었지만 문서를 찾지 못함
+    FAILED = "failed"  # 검색 자체가 실패함 (한도 초과, 연결 실패, 시간 초과 등)
+    SKIPPED = "skipped"  # 한 번에 검증하는 문장 수 제한 때문에 검색하지 않음
+
+
 class VerificationStatus(StrEnum):
     """화면에 보여 줄 검증 상태. '확정 판정'이 아니라 '검색된 출처 기준'의 표시다."""
 

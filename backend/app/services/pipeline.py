@@ -8,6 +8,9 @@ import logging
 
 import anthropic
 
+from dataclasses import dataclass
+
+from app.core.config import settings
 from app.core.errors import AppError
 from app.services.claim_extractor import (
     ClassificationError,
@@ -17,9 +20,17 @@ from app.services.claim_extractor import (
     TooManySentencesError,
     classify_sentences,
 )
+from app.services.evidence import Evidence, gather_evidence
+from app.services.searcher import get_provider
 from app.services.sentence_splitter import split_sentences
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass
+class AnalysisOutcome:
+    classification: ClassificationResult
+    evidence: dict[int, Evidence]  # 문장 번호(idx) → 검색 결과
 
 
 def _llm_error(exc: Exception) -> AppError:
@@ -41,7 +52,7 @@ def _llm_error(exc: Exception) -> AppError:
     return AppError(502, "llm_error", "AI 서비스에서 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.")
 
 
-def analyze_text(text: str) -> ClassificationResult:
+def analyze_text(text: str) -> AnalysisOutcome:
     if not text.strip():
         raise AppError(422, "empty_input", "분석할 내용을 입력해 주세요.")
 
@@ -73,4 +84,13 @@ def analyze_text(text: str) -> ClassificationResult:
         result.usage.output_tokens,
         result.model,
     )
-    return result
+
+    # 검색은 일부가 실패해도 전체를 실패시키지 않는다. (실패는 문장별로 기록되어 화면에 표시된다)
+    evidence = gather_evidence(
+        result.claims,
+        get_provider(),
+        max_claims=settings.max_verify_claims,
+        concurrency=settings.search_concurrency,
+        timeout=settings.search_phase_timeout,
+    )
+    return AnalysisOutcome(classification=result, evidence=evidence)

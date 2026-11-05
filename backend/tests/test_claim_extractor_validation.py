@@ -7,7 +7,14 @@ SENTENCES = split_sentences("에펠탑은 1889년에 지어졌다. 정말 아름
 
 
 def ok_item(idx, **overrides):
-    item = {"idx": idx, "claim_type": "factual", "check_worthy": True, "flags": [], "reason": "사실 서술"}
+    item = {
+        "idx": idx,
+        "claim_type": "factual",
+        "check_worthy": True,
+        "flags": [],
+        "reason": "사실 서술",
+        "search_query": "에펠탑",
+    }
     item.update(overrides)
     return item
 
@@ -65,6 +72,23 @@ def test_not_json_and_wrong_shape():
         except Exception as exc:  # noqa: BLE001
             raise AssertionError(f"ValueError여야 한다: {raw} -> {type(exc).__name__}") from exc
         raise AssertionError(f"오류가 나야 한다: {raw}")
+
+
+def test_search_query_kept_for_check_worthy_and_cleared_otherwise():
+    claims = run([ok_item(0, search_query="  에펠탑   1889 "), ok_item(1, check_worthy=False, search_query="아무거나")])
+    assert claims[0].search_query == "에펠탑 1889"  # 앞뒤/중복 공백 정리
+    assert claims[1].search_query == ""  # 확인 대상이 아니면 검색하지 않는다
+
+
+def test_search_query_is_truncated():
+    claims = run([ok_item(0, search_query="가" * 300), ok_item(1)])
+    assert len(claims[0].search_query) == 80
+
+
+def test_check_worthy_requires_a_search_query():
+    expect_error([ok_item(0, search_query="   "), ok_item(1)], "search_query")
+    expect_error([ok_item(0, search_query=None), ok_item(1)], "search_query")
+    expect_error([ok_item(0, search_query=123), ok_item(1)], "search_query")
 
 
 def test_reason_is_truncated():

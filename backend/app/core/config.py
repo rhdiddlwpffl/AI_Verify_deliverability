@@ -20,6 +20,16 @@ class Settings(BaseSettings):
     # 문장 분류에 쓰는 모델과 추론 강도. 분류는 단순 작업이라 강도를 낮게 시작한다.
     extract_model: str = "claude-sonnet-5-5"
     extract_effort: str = "low"  # low | medium | high | xhigh | max
+    # 위키백과 API 요청에 붙는 User-Agent. 위키미디어는 '설명이 담긴 User-Agent'를 요구하고,
+    # 없으면 IP가 차단될 수 있다. 배포 전에 연락처(URL 또는 이메일)를 넣어야 한다.
+    search_user_agent: str = "AnswerAuditor/0.1 (local development)"
+    # 주장 하나당 가져올 검색 결과 수와, 결과마다 가져올 본문(도입부) 글자 수
+    search_results_per_claim: int = 3
+    search_extract_chars: int = 400
+    # 한 번의 분석에서 검색할 최대 문장 수 / 동시에 보낼 검색 수 / 검색 단계 전체 제한 시간(초)
+    max_verify_claims: int = 20
+    search_concurrency: int = 3
+    search_phase_timeout: float = 30.0
     # 입력 글자 수 상한 (비용 폭주 방지)
     max_input_chars: int = 5000
     # 한 번에 분석할 수 있는 최대 문장 수 (비용 폭주 방지). 넘으면 자르지 않고 오류로 알린다.

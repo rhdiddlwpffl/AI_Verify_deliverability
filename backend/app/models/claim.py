@@ -25,6 +25,8 @@ class Claim(SQLModel, table=True):
     start_offset: int = Field(nullable=False)
     end_offset: int = Field(nullable=False)
     claim_type: str = Field(nullable=False)
+    # 위키백과 검색에 쓴 짧은 검색어. 확인 대상이 아닌 문장(검색하지 않음)은 비어 있다.
+    search_query: str | None = Field(default=None, sa_type=Text)
     check_worthy: bool = Field(default=False, nullable=False)
     # 취약점 신호 목록. 예: ["absolute_expression", "number_without_source"]
     vulnerability_flags: list[str] = jsonb_list_field()

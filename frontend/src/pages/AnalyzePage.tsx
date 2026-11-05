@@ -44,7 +44,9 @@ export function AnalyzePage() {
       {/* 상태 안내는 스크린 리더에도 읽히도록 live region 안에 둔다. */}
       <div aria-live="polite">
         {status.kind === 'loading' && (
-          <p className="status">분석 중입니다… 보통 몇 초 정도 걸립니다.</p>
+          <p className="status">
+            분석 중입니다… 문장을 분류하고 위키백과에서 근거 후보를 찾느라 보통 5~10초 걸립니다.
+          </p>
         )}
         {status.kind === 'error' && (
           <div role="alert" className="error">
