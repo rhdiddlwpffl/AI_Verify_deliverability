@@ -18,6 +18,17 @@ AI 답변을 문장별로 나눠, 사실 확인이 필요한 주장과 근거가
 - [x] 2단계: 백엔드 Hello (FastAPI, `/health`, CORS)
 - [x] 3단계: 프론트 Hello (Vite + React + TS, `/health` 호출)
 - [x] 4단계: DB 연결 (Supabase PostgreSQL, `/health/db`)
+- [x] 5단계: 데이터 모델(SQLModel 6개 테이블) + Alembic 마이그레이션
+
+## DB 마이그레이션 (backend 폴더에서)
+```
+.venv\Scripts\python -m alembic upgrade head                           # 최신 구조로 적용
+.venv\Scripts\python -m alembic revision --autogenerate -m "설명"       # 모델 변경분으로 새 마이그레이션 생성
+.venv\Scripts\python -m alembic current                                # 현재 DB 버전 확인
+```
+- 자동 생성된 파일은 **적용 전에 반드시 열어서 확인**하세요. 특히 `drop_table`, `drop_column`이 의도한 것인지 봅니다.
+- `alembic.ini`는 한글 등 비ASCII 문자를 넣지 마세요(Windows 기본 인코딩으로 읽음).
+- 새 마이그레이션에서 테이블을 만들면 RLS를 켜는 구문도 함께 넣습니다(첫 마이그레이션 참고).
 
 ## 요구 사항
 - Node.js **22.12 이상** (Vite 8 요구사항), Python 3.12 이상
