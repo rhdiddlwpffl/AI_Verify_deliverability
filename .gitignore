@@ -1,0 +1,21 @@
+# --- 비밀값: 절대 GitHub에 올리지 않는다 ---
+.env
+.env.*
+!.env.example
+
+# --- Python ---
+.venv/
+venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# --- Node / Vite ---
+node_modules/
+dist/
+
+# --- 에디터 / OS ---
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
