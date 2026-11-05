@@ -73,6 +73,9 @@ class VerificationStatus(StrEnum):
     MIXED = "mixed"
     INSUFFICIENT = "insufficient"
     SEARCH_FAILED = "search_failed"
+    # 비교하지 못함: 개수 제한으로 검색을 건너뛰었거나 비교 호출이 실패한 경우.
+    # '근거 부족'(검색해 봤지만 확인하지 못함)과는 다른 상황이라 구분한다.
+    UNVERIFIED = "unverified"
 
 
 class Confidence(StrEnum):

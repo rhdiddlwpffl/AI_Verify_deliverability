@@ -9,7 +9,7 @@ router = APIRouter(prefix="/analyses", tags=["analyses"])
 
 @router.post("", response_model=AnalyzeResponse)
 def create_analysis(body: AnalyzeRequest) -> AnalyzeResponse:
-    """AI 답변을 문장별로 분석하고, 확인이 필요한 문장마다 위키백과에서 근거 후보를 찾는다.
+    """AI 답변을 문장별로 분석하고, 확인이 필요한 문장마다 위키백과에서 근거 후보를 찾아 비교한다.
     (지금은 DB에 저장하지 않는다. 저장은 9단계)
 
     동기(def) 함수로 둔 이유: Claude SDK와 검색 호출이 동기 방식이라, FastAPI가 별도 스레드에서
@@ -21,6 +21,8 @@ def create_analysis(body: AnalyzeRequest) -> AnalyzeResponse:
     claims = []
     for c in outcome.classification.claims:
         ev = outcome.evidence[c.sentence.idx]
+        vr = outcome.verification[c.sentence.idx]
+        verdicts = vr.source_verdicts  # 비교에 성공했을 때만 있다. 출처 순서(sid)와 같은 순서.
         claims.append(
             ClaimOut(
                 idx=c.sentence.idx,
@@ -36,8 +38,21 @@ def create_analysis(body: AnalyzeRequest) -> AnalyzeResponse:
                 search_query=c.search_query,
                 search_error=ev.error,
                 sources=[
-                    SourceOut(title=r.title, url=r.url, snippet=r.snippet, source=r.source) for r in ev.results
+                    SourceOut(
+                        title=r.title,
+                        url=r.url,
+                        snippet=r.snippet,
+                        source=r.source,
+                        stance=verdicts[i].stance if verdicts else None,
+                        quote=verdicts[i].quote if verdicts else "",
+                        downgraded=verdicts[i].downgraded if verdicts else False,
+                    )
+                    for i, r in enumerate(ev.results)
                 ],
+                verification_status=vr.status,
+                verification_confidence=vr.confidence,
+                verification_rationale=vr.rationale,
+                verification_error=vr.error,
             )
         )
     return AnalyzeResponse(

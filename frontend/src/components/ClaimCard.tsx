@@ -1,6 +1,7 @@
 import type { Claim } from '../api/types'
 import { claimTypeLabel, flagLabel } from '../labels'
 import { EvidenceList } from './EvidenceList'
+import { VerificationBox } from './VerificationBox'
 
 interface Props {
   claim: Claim
@@ -27,6 +28,8 @@ export function ClaimCard({ claim, selected, onSelect }: Props) {
           </ul>
         )}
       </div>
+
+      <VerificationBox claim={claim} />
 
       {claim.reason && <p className="card__reason">분류 이유: {claim.reason}</p>}
 

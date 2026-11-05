@@ -1,4 +1,5 @@
 import type { Claim } from '../api/types'
+import { STANCE_LABEL } from '../labels'
 
 // 검색이 실패한 이유별 안내. 모두 '근거가 부족하다'는 뜻이 아니라 '검색이 되지 않았다'는 뜻이다.
 const SEARCH_ERROR_MESSAGE: Record<string, string> = {
@@ -13,34 +14,64 @@ function isHttpsUrl(url: string): boolean {
   return url.startsWith('https://')
 }
 
+/** 발췌문 안에서 검증된 인용문 부분을 강조한다. 인용문이 없거나 찾지 못하면 발췌문을 그대로 보여 준다. */
+function Snippet({ text, quote }: { text: string; quote: string }) {
+  const at = quote ? text.indexOf(quote) : -1
+  if (at === -1) return <>{text}</>
+  return (
+    <>
+      {text.slice(0, at)}
+      <mark className="quote">{text.slice(at, at + quote.length)}</mark>
+      {text.slice(at + quote.length)}
+    </>
+  )
+}
+
 export function EvidenceList({ claim }: { claim: Claim }) {
   switch (claim.search_status) {
-    case 'found':
+    case 'found': {
+      const compared = claim.sources.some((s) => s.stance !== null)
       return (
         <div className="evidence">
           <p className="evidence__title">
             위키백과에서 찾은 관련 문서 <span className="muted">(검색어: {claim.search_query})</span>
           </p>
           <p className="muted evidence__note">
-            검색된 문서일 뿐이며, 이 문장을 뒷받침하는지는 아직 판단하지 않았습니다.
+            {compared
+              ? 'AI가 발췌문과 문장을 비교했고, 표시된 인용문이 발췌문에 실제로 있는지는 프로그램이 확인했습니다. 그래도 틀릴 수 있으니 링크로 원문을 확인하세요.'
+              : '근거 비교를 하지 못해 찾은 문서만 보여 드립니다. 이 문서가 문장을 뒷받침하는지는 직접 확인해 주세요.'}
           </p>
           <ul className="sources">
             {claim.sources.map((source) => (
               <li key={source.url} className="source">
-                {isHttpsUrl(source.url) ? (
-                  <a href={source.url} target="_blank" rel="noopener noreferrer">
-                    {source.title}
-                  </a>
-                ) : (
-                  <span>{source.title}</span>
+                <div className="source__head">
+                  {isHttpsUrl(source.url) ? (
+                    <a href={source.url} target="_blank" rel="noopener noreferrer">
+                      {source.title}
+                    </a>
+                  ) : (
+                    <span>{source.title}</span>
+                  )}
+                  {source.stance && (
+                    <span className={`stance stance--${source.stance}`}>{STANCE_LABEL[source.stance]}</span>
+                  )}
+                </div>
+                {source.downgraded && (
+                  <p className="muted source__note">
+                    AI가 근거 후보로 봤지만 검증을 통과하지 못해(인용문 확인 불가, 또는 대상·시점 불일치) 근거에서
+                    제외했습니다.
+                  </p>
                 )}
-                <p className="source__snippet">{source.snippet}</p>
+                <p className="source__snippet">
+                  <Snippet text={source.snippet} quote={source.quote} />
+                </p>
               </li>
             ))}
           </ul>
           <p className="muted evidence__license">출처: 위키백과 (CC BY-SA 4.0)</p>
         </div>
       )
+    }
     case 'none':
       return (
         <p className="evidence muted">
@@ -56,11 +87,7 @@ export function EvidenceList({ claim }: { claim: Claim }) {
         </p>
       )
     case 'skipped':
-      return (
-        <p className="evidence muted">
-          한 번에 검색하는 문장 수 제한 때문에 이 문장은 검색하지 않았습니다.
-        </p>
-      )
+      return null // 안내는 검증 상태(VerificationBox)가 한 번만 보여 준다
     default:
       return null
   }

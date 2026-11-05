@@ -15,6 +15,14 @@
   --mark-flag-bg: #ffd8a8;
   --mark-line: #9a5200;
   --focus: #0969da;
+  /* 검증 상태 색: 의도적으로 초록/빨강을 피한다 (파랑 / 주황 / 보라) */
+  --status-supported: #0969da;
+  --status-supported-bg: #ddf4ff;
+  --status-contradicted: #bc4c00;
+  --status-contradicted-bg: #fff1e5;
+  --status-mixed: #8250df;
+  --status-mixed-bg: #fbefff;
+  --quote-bg: #cdeaff;
 
   font: 16px/1.6 system-ui, 'Segoe UI', 'Apple SD Gothic Neo', 'Malgun Gothic', sans-serif;
   color: var(--fg);
@@ -40,6 +48,13 @@
     --mark-flag-bg: #6b3a00;
     --mark-line: #f0a85e;
     --focus: #4493f8;
+    --status-supported: #4493f8;
+    --status-supported-bg: #0c2d6b;
+    --status-contradicted: #f0883e;
+    --status-contradicted-bg: #4a2400;
+    --status-mixed: #b083f0;
+    --status-mixed-bg: #2f1a55;
+    --quote-bg: #174a85;
   }
 }
 
@@ -305,7 +320,101 @@ button.mark {
   font-size: 0.9rem;
 }
 
+/* ---- 결과: 검증 상태 ----
+   참/거짓처럼 보이는 초록/빨강은 쓰지 않는다. 색 외에 글자로도 구분된다. */
+.verification {
+  margin: 0.75rem 0 0;
+}
+
+.vbadge {
+  display: inline-block;
+  margin: 0;
+  padding: 0.2rem 0.7rem;
+  font-size: 0.9rem;
+  font-weight: 700;
+  border: 2px solid var(--border);
+  border-radius: 6px;
+}
+
+.vbadge--supported {
+  background: var(--status-supported-bg);
+  border-color: var(--status-supported);
+}
+
+.vbadge--contradicted {
+  background: var(--status-contradicted-bg);
+  border-color: var(--status-contradicted);
+}
+
+.vbadge--mixed {
+  background: var(--status-mixed-bg);
+  border-color: var(--status-mixed);
+}
+
+.vbadge--insufficient {
+  background: var(--card);
+  border-color: var(--muted);
+}
+
+.vbadge--search_failed,
+.vbadge--unverified {
+  background: var(--card);
+  border-style: dashed;
+  border-color: var(--muted);
+}
+
+.verification__rationale,
+.verification .muted {
+  margin: 0.4rem 0 0;
+  font-size: 0.95rem;
+}
+
+.verification__strength span {
+  font-size: 0.85rem;
+}
+
 /* ---- 결과: 검색된 근거 후보 ---- */
+.source__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.stance {
+  padding: 0.05rem 0.5rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+}
+
+.stance--supports {
+  background: var(--status-supported-bg);
+  border-color: var(--status-supported);
+}
+
+.stance--contradicts {
+  background: var(--status-contradicted-bg);
+  border-color: var(--status-contradicted);
+}
+
+.stance--neutral {
+  color: var(--muted);
+}
+
+.source__note {
+  margin: 0.25rem 0 0;
+  font-size: 0.85rem;
+}
+
+mark.quote {
+  padding: 0 0.1em;
+  color: inherit;
+  background: var(--quote-bg);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
 .evidence {
   margin: 0.75rem 0 0;
   padding-top: 0.75rem;

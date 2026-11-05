@@ -15,6 +15,11 @@ class SourceOut(BaseModel):
     url: str
     snippet: str  # 문서 도입부 본문(순수 텍스트)
     source: str  # 어디서 찾았는지. 예: "wikipedia-ko"
+    # 비교 결과(비교하지 못했으면 stance는 null). 'supports'/'contradicts'는 인용문이 발췌문에
+    # 실제로 있음을 코드가 확인한 경우에만 나온다. 이것이 주장이 참/거짓이라는 뜻은 아니다.
+    stance: str | None
+    quote: str  # 검증을 통과한 인용문(snippet 안의 실제 부분 문자열). 없으면 ""
+    downgraded: bool  # AI는 근거라고 했지만 인용문을 확인할 수 없어 근거에서 제외한 경우
 
 
 class ClaimOut(BaseModel):
@@ -35,6 +40,12 @@ class ClaimOut(BaseModel):
     search_query: str
     search_error: str | None  # failed일 때만: rate_limited | unavailable | timeout | error
     sources: list[SourceOut]
+    # 검색된 출처 기준의 참고용 상태. 확정 판정이 아니다.
+    # not_checkable | supported | contradicted | mixed | insufficient | search_failed | unverified
+    verification_status: str
+    verification_confidence: str | None  # high | medium | low. 검증된 인용 수에 따른 '근거 강도'이며 사실 여부의 확실성이 아니다
+    verification_rationale: str | None  # 발췌문에서 무엇이 확인/미확인인지 요약
+    verification_error: str | None  # unverified일 때 이유: skipped | judge_failed | rate_limited | timeout | unavailable | error
 
 
 class AnalyzeResponse(BaseModel):

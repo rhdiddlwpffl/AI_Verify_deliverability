@@ -16,6 +16,7 @@ import json
 import logging
 import re
 import time
+import unicodedata
 import urllib.error
 import urllib.request
 from collections.abc import Callable
@@ -102,7 +103,9 @@ def _clean_query(query: str) -> str:
 def _clean_text(text: str) -> str:
     # 눈에 보이지 않는 글자(폭 없는 공백 등)와 공백/줄바꿈을 정리한다.
     # 이후 '인용문이 발췌문에 실제로 있는지' 글자 단위로 비교할 때 오탐을 막기 위해서다.
-    return " ".join(_INVISIBLE.sub("", text).split())
+    # NFC로 통일하는 이유: 같은 한글이 '완성형'과 '자모 분리형' 두 가지 코드로 저장될 수 있어서,
+    # 통일하지 않으면 눈에는 같은 문장이 글자 비교에서 다르다고 나온다.
+    return " ".join(unicodedata.normalize("NFC", _INVISIBLE.sub("", text)).split())
 
 
 def _page_url(lang: str, title: str) -> str:

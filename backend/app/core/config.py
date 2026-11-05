@@ -26,6 +26,13 @@ class Settings(BaseSettings):
     # 주장 하나당 가져올 검색 결과 수와, 결과마다 가져올 본문(도입부) 글자 수
     search_results_per_claim: int = 3
     search_extract_chars: int = 400
+    # 근거 비교(발췌문이 주장을 뒷받침하는지) 호출의 모델/추론 강도. 분류보다 어려운 작업이라 강도를 높인다.
+    judge_model: str = "claude-sonnet-5-5"
+    judge_effort: str = "medium"  # low | medium | high | xhigh | max
+    # 비교 호출 한 번에 담을 문장 수 / 동시에 보낼 비교 호출 수.
+    # 나눠서 보내면 한 번의 실패가 전체로 번지지 않고 응답도 빨라진다.
+    judge_chunk_size: int = 8
+    judge_concurrency: int = 2
     # 한 번의 분석에서 검색할 최대 문장 수 / 동시에 보낼 검색 수 / 검색 단계 전체 제한 시간(초)
     max_verify_claims: int = 20
     search_concurrency: int = 3
