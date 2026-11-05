@@ -4,3 +4,4 @@ pydantic-settings==2.16.2
 sqlmodel==0.0.48
 psycopg[binary]==3.3.8
 alembic==1.20.1
+anthropic==2.5.0

@@ -19,6 +19,20 @@ AI 답변을 문장별로 나눠, 사실 확인이 필요한 주장과 근거가
 - [x] 3단계: 프론트 Hello (Vite + React + TS, `/health` 호출)
 - [x] 4단계: DB 연결 (Supabase PostgreSQL, `/health/db`)
 - [x] 5단계: 데이터 모델(SQLModel 6개 테이블) + Alembic 마이그레이션
+- [x] 6단계: 주장 추출 (문장 분리, Claude 분류, `POST /analyses`, 하이라이트 화면)
+
+## API: `POST /analyses`
+AI 답변을 문장별로 분석합니다. (현재는 DB에 저장하지 않음)
+```
+요청:  {"text": "분석할 AI 답변"}                       # 최대 5,000자
+응답:  {"claims": [{"idx", "text", "start", "end",       # start/end = JavaScript text.slice(start, end) 기준(UTF-16)
+                    "claim_type", "check_worthy", "flags", "reason"}],
+        "sentence_count", "check_worthy_count", "model"}
+오류:  {"error": {"code": "...", "message": "사용자에게 보여 줄 한국어 문장"}}
+```
+- `flags`(취약점 신호)는 "다시 확인해 볼 만한 특징"이지 거짓 판정이 아닙니다. `check_worthy=false`인 문장에는 비어 있습니다.
+- 오류 코드: `empty_input`, `input_too_long`, `no_sentences`, `too_many_sentences`, `invalid_request`, `invalid_json`, `analysis_refused`, `analysis_failed`, `llm_not_configured`, `llm_auth_error`, `llm_rate_limited`, `llm_timeout`, `llm_unavailable`, `llm_request_error`, `llm_error`
+- 수동 시험: `backend/scripts/try_classify.py`(실제 API 호출, 비용 발생), `backend/scripts/check_offsets.py`
 
 ## DB 마이그레이션 (backend 폴더에서)
 ```

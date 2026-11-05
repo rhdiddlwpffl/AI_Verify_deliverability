@@ -15,6 +15,16 @@ class Settings(BaseSettings):
     # PostgreSQL 연결 문자열 (Supabase 대시보드에서 복사해 .env에 넣는다)
     database_url: str = ""
 
+    # Claude API 키. SDK는 .env를 읽지 않으므로 이 설정값을 클라이언트에 직접 넘긴다.
+    anthropic_api_key: str = ""
+    # 문장 분류에 쓰는 모델과 추론 강도. 분류는 단순 작업이라 강도를 낮게 시작한다.
+    extract_model: str = "claude-sonnet-5-5"
+    extract_effort: str = "low"  # low | medium | high | xhigh | max
+    # 입력 글자 수 상한 (비용 폭주 방지)
+    max_input_chars: int = 5000
+    # 한 번에 분석할 수 있는 최대 문장 수 (비용 폭주 방지). 넘으면 자르지 않고 오류로 알린다.
+    max_sentences: int = 60
+
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
     @property

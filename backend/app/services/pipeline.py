@@ -1,0 +1,76 @@
+"""분석 파이프라인: 문장 분리 → Claude 분류. (7~8단계에서 검색/검증 단계가 여기에 추가된다.)
+
+SDK/모델 예외를 사용자에게 보여 줄 AppError로 바꾸는 곳이기도 하다.
+로그에는 오류 종류와 요청 ID만 남기고, 입력 원문은 남기지 않는다.
+"""
+
+import logging
+
+import anthropic
+
+from app.core.errors import AppError
+from app.services.claim_extractor import (
+    ClassificationError,
+    ClassificationRefusedError,
+    ClassificationResult,
+    LLMNotConfiguredError,
+    TooManySentencesError,
+    classify_sentences,
+)
+from app.services.sentence_splitter import split_sentences
+
+logger = logging.getLogger(__name__)
+
+
+def _llm_error(exc: Exception) -> AppError:
+    """Anthropic SDK 예외 → 사용자용 오류. 응답에는 내부 정보를 싣지 않는다."""
+    request_id = getattr(exc, "request_id", None)
+    logger.error("Claude API 오류: %s (status=%s, request_id=%s)", type(exc).__name__, getattr(exc, "status_code", None), request_id)
+
+    if isinstance(exc, anthropic.RateLimitError):
+        return AppError(429, "llm_rate_limited", "요청이 많아 잠시 처리할 수 없습니다. 잠시 후 다시 시도해 주세요.")
+    if isinstance(exc, (anthropic.AuthenticationError, anthropic.PermissionDeniedError)):
+        return AppError(502, "llm_auth_error", "AI 서비스 인증에 문제가 있습니다. 서버 설정을 확인해야 합니다.")
+    if isinstance(exc, anthropic.APITimeoutError):
+        return AppError(504, "llm_timeout", "AI 서비스 응답이 늦어지고 있습니다. 잠시 후 다시 시도해 주세요.")
+    if isinstance(exc, anthropic.APIConnectionError):
+        return AppError(502, "llm_unavailable", "AI 서비스에 연결할 수 없습니다. 잠시 후 다시 시도해 주세요.")
+    if isinstance(exc, anthropic.BadRequestError):
+        # 크레딧 소진, 잘못된 파라미터 등. 원인은 서버 로그(요청 ID)로 확인한다.
+        return AppError(502, "llm_request_error", "AI 서비스가 요청을 처리하지 못했습니다. 서버 설정(사용 한도 등)을 확인해야 합니다.")
+    return AppError(502, "llm_error", "AI 서비스에서 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.")
+
+
+def analyze_text(text: str) -> ClassificationResult:
+    if not text.strip():
+        raise AppError(422, "empty_input", "분석할 내용을 입력해 주세요.")
+
+    sentences = split_sentences(text)
+    if not sentences:
+        raise AppError(422, "no_sentences", "분석할 문장을 찾지 못했습니다. 코드 블록이나 기호만 있는 입력은 분석하지 않습니다.")
+
+    try:
+        result = classify_sentences(sentences)
+    except TooManySentencesError as exc:
+        raise AppError(422, "too_many_sentences", str(exc)) from exc
+    except ClassificationRefusedError as exc:
+        raise AppError(422, "analysis_refused", "AI 서비스가 이 내용의 분석을 거부했습니다.") from exc
+    except LLMNotConfiguredError as exc:
+        logger.error("ANTHROPIC_API_KEY가 설정되지 않았습니다.")
+        raise AppError(503, "llm_not_configured", "AI 분석 기능이 아직 설정되지 않았습니다.") from exc
+    except ClassificationError as exc:
+        logger.error("분류 실패: %s", exc)
+        raise AppError(502, "analysis_failed", "AI 응답을 처리하지 못했습니다. 잠시 후 다시 시도해 주세요.") from exc
+    except anthropic.AnthropicError as exc:
+        raise _llm_error(exc) from exc
+
+    # 비용 추적용 로그. 입력 원문은 남기지 않는다.
+    logger.info(
+        "분석 완료: 문장 %d개, 확인 필요 %d개, 토큰 입력 %d / 출력 %d, 모델 %s",
+        len(result.claims),
+        sum(c.check_worthy for c in result.claims),
+        result.usage.input_tokens,
+        result.usage.output_tokens,
+        result.model,
+    )
+    return result

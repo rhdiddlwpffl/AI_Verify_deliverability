@@ -21,6 +21,31 @@ class ClaimType(StrEnum):
     OTHER = "other"
 
 
+class VulnerabilityFlag(StrEnum):
+    """'취약점 신호'. 거짓이라는 뜻이 아니라, 다시 확인해 볼 만한 특징이다."""
+
+    # 코드 규칙으로 찾는 신호
+    ABSOLUTE_EXPRESSION = "absolute_expression"  # 항상, 반드시, 모든, 100% ...
+    CONTAINS_NUMBER = "contains_number"  # 수치가 있음
+    CONTAINS_YEAR = "contains_year"  # 연도가 있음
+    VAGUE_ATTRIBUTION = "vague_attribution"  # '연구에 따르면' 처럼 출처 없는 인용
+    QUOTATION = "quotation"  # 따옴표로 인용한 문구
+    # Claude가 추가로 찾는 신호
+    OVERGENERALIZATION = "overgeneralization"  # 일부 사례를 전체로 일반화
+    UNVERIFIABLE_SPECIFICITY = "unverifiable_specificity"  # 확인하기 어려운 지나치게 구체적인 세부 내용
+    CAUSAL_CLAIM = "causal_claim"  # 인과관계 단정
+    POSSIBLY_OUTDATED = "possibly_outdated"  # 시간이 지나 바뀌었을 수 있는 내용
+
+
+# Claude가 붙일 수 있는 신호 (나머지는 코드 규칙 전용)
+LLM_FLAGS: tuple[VulnerabilityFlag, ...] = (
+    VulnerabilityFlag.OVERGENERALIZATION,
+    VulnerabilityFlag.UNVERIFIABLE_SPECIFICITY,
+    VulnerabilityFlag.CAUSAL_CLAIM,
+    VulnerabilityFlag.POSSIBLY_OUTDATED,
+)
+
+
 class Stance(StrEnum):
     """검색된 출처가 주장에 대해 취하는 입장. 참/거짓 판정이 아니다."""
 
