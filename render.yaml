@@ -1,0 +1,32 @@
+# Render Blueprint: 백엔드(FastAPI) 배포 설정. 비밀값은 여기에 적지 않는다.
+#  - sync: false      -> Render 대시보드에서 직접 입력 (DB 주소, API 키)
+#  - generateValue    -> Render가 무작위 값을 만들어 넣는다 (채팅/저장소에 노출되지 않음)
+services:
+  - type: web
+    name: answer-auditor-api
+    runtime: python
+    region: singapore # 운영 DB(Supabase ap-south-1)와 가까운 쪽
+    plan: free # 유휴 후 첫 요청이 느릴 수 있다(콜드 스타트)
+    rootDir: backend
+    buildCommand: pip install -r requirements.txt
+    # --no-proxy-headers 필수: 없으면 uvicorn이 X-Forwarded-For를 그대로 믿어 호출 제한을 우회할 수 있다.
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT --no-proxy-headers
+    healthCheckPath: /health
+    autoDeployTrigger: commit
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.14.2 # 로컬에서 테스트한 버전
+      - key: APP_ENV
+        value: production
+      - key: TRUSTED_PROXY_COUNT
+        value: "1" # 배포 후 가짜 X-Forwarded-For로 우회되는지 반드시 점검
+      - key: SEARCH_USER_AGENT
+        value: AnswerAuditor/0.1 (https://github.com/rhdiddlwpffl/AI_Verify_deliverability)
+      - key: RATE_LIMIT_SALT
+        generateValue: true
+      - key: DATABASE_URL
+        sync: false
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: CORS_ORIGINS
+        sync: false # Vercel 주소가 정해지면 입력
