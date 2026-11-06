@@ -1,14 +1,34 @@
 from collections.abc import Iterator
 from functools import lru_cache
+from urllib.parse import urlsplit
 
 from sqlalchemy import Engine
 from sqlmodel import Session, create_engine
 
 from app.core.config import settings
 
+# Supabase Transaction pooler 포트. 세션 풀러(5432)는 동시 클라이언트 한도가 작아 운영 앱에는 이쪽을 쓴다.
+TRANSACTION_POOLER_PORT = 6543
+
 
 class DatabaseNotConfiguredError(RuntimeError):
     """DATABASE_URL이 비어 있을 때 발생한다."""
+
+
+def connect_args_for(url: str) -> dict:
+    """연결 방식에 맞는 psycopg 옵션.
+
+    Transaction pooler는 요청마다 서버 연결이 바뀔 수 있어, psycopg의 자동 '준비된 쿼리'
+    (같은 쿼리 반복 시 서버 쪽에 저장)와 충돌한다. 그래서 이 포트일 때는 끈다.
+    """
+    args: dict = {"connect_timeout": 5}  # DB가 응답 없을 때 5초 후 포기
+    try:
+        port = urlsplit(url).port
+    except ValueError:
+        port = None
+    if port == TRANSACTION_POOLER_PORT:
+        args["prepare_threshold"] = None
+    return args
 
 
 @lru_cache
@@ -26,7 +46,7 @@ def get_engine() -> Engine:
         pool_pre_ping=True,  # 끊어진 연결을 쓰기 전에 감지해서 새로 연결
         pool_size=5,  # 무료 DB의 연결 수 제한을 고려해 작게 유지
         max_overflow=2,
-        connect_args={"connect_timeout": 5},  # DB가 응답 없을 때 5초 후 포기
+        connect_args=connect_args_for(url),
     )
 
 
