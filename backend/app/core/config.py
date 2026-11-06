@@ -1,4 +1,7 @@
+from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+_DEV_SALT = "dev-only-salt-change-me"
 
 
 class Settings(BaseSettings):
@@ -14,6 +17,19 @@ class Settings(BaseSettings):
 
     # PostgreSQL 연결 문자열 (Supabase 대시보드에서 복사해 .env에 넣는다)
     database_url: str = ""
+
+    # ---- 호출 횟수 제한 (분석 1회에 Claude 비용이 들기 때문에 남용을 막는다) ----
+    rate_limit_ip_per_minute: int = 3  # IP당 분석 요청 (서버 메모리)
+    rate_limit_ip_per_day: int = 20  # IP당 24시간 분석 요청 (DB에 기록)
+    rate_limit_global_per_day: int = 60  # 전체 24시간 분석 요청 = 하루 비용의 상한 (DB에 기록)
+    rate_limit_history_per_minute: int = 60  # IP당 기록 조회/삭제 요청 (가볍게)
+    max_concurrent_analyses: int = 3  # 동시에 실행하는 분석 수. 넘으면 503
+    # 배포 환경에서 앞단 프록시(Render 등)가 몇 개인지. 0이면 연결 상대의 주소를 그대로 쓴다.
+    # 1 이상이면 X-Forwarded-For의 '오른쪽에서 N번째'를 클라이언트 주소로 본다. 맨 왼쪽 값은
+    # 클라이언트가 마음대로 쓸 수 있어서 믿지 않는다. (배포 때 가짜 헤더로 확인할 것)
+    trusted_proxy_count: int = 0
+    # IP를 해시할 때 섞는 비밀 값. IPv4는 경우의 수가 적어서 salt 없이 해시하면 되돌릴 수 있다.
+    rate_limit_salt: str = _DEV_SALT
 
     # Claude API 키. SDK는 .env를 읽지 않으므로 이 설정값을 클라이언트에 직접 넘긴다.
     anthropic_api_key: str = ""
@@ -47,6 +63,13 @@ class Settings(BaseSettings):
     max_sentences: int = 60
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
+
+    @model_validator(mode="after")
+    def _require_real_salt_in_production(self) -> "Settings":
+        # 개발용 기본 salt로 배포하면 저장된 IP 해시가 되돌려질 수 있다. 시작 단계에서 막는다.
+        if self.app_env == "production" and (self.rate_limit_salt == _DEV_SALT or len(self.rate_limit_salt) < 16):
+            raise ValueError("production에서는 RATE_LIMIT_SALT를 16자 이상의 비밀 값으로 설정해야 합니다.")
+        return self
 
     @property
     def cors_origin_list(self) -> list[str]:

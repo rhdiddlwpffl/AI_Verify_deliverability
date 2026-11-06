@@ -2,15 +2,29 @@
 분류, 검색, 비교는 모두 가짜로 바꿔 끼우므로 비용이 들지 않는다."""
 
 from contextlib import contextmanager
+from types import SimpleNamespace
 
 from app.api.routes.analyses import create_analysis
 from app.schemas.analysis import AnalyzeRequest
-from app.services import pipeline
+from app.services import pipeline, rate_limit
 from app.services.claim_extractor import ClaimAnalysis, ClassificationResult, TokenUsage
 from app.services.searcher import SearchResult, SearchUnavailableError
 from app.services.verifier import Judgment, JudgeResult, SourceVerdict
 
 TEXT = "😀 에펠탑은 1889년에 지어졌다. 이 문장은 검색이 실패한다. 정말 멋지다."
+REQUEST = SimpleNamespace(client=SimpleNamespace(host="203.0.113.9"), headers={})
+
+
+class AllowAllLimiter:
+    """이 파일의 테스트는 응답 조립을 보는 것이므로, 호출 횟수 제한은 항상 통과시킨다.
+    (제한 자체는 test_rate_limit.py에서 확인한다)"""
+
+    def admit_analysis(self, ip):
+        pass
+
+    @contextmanager
+    def analysis_slot(self):
+        yield
 
 
 def fake_classify(sentences):
@@ -47,14 +61,15 @@ def fake_judge_fails(items):
 
 @contextmanager
 def patched(judge=fake_judge_ok):
-    original = (pipeline.classify_sentences, pipeline.get_provider, pipeline.judge_claims)
+    original = (pipeline.classify_sentences, pipeline.get_provider, pipeline.judge_claims, rate_limit.limiter)
     pipeline.classify_sentences = fake_classify
     pipeline.get_provider = lambda: FakeProvider()
     pipeline.judge_claims = judge
+    rate_limit.limiter = AllowAllLimiter()
     try:
         yield
     finally:
-        pipeline.classify_sentences, pipeline.get_provider, pipeline.judge_claims = original
+        (pipeline.classify_sentences, pipeline.get_provider, pipeline.judge_claims, rate_limit.limiter) = original
 
 
 def js_slice(text, start, end):
@@ -63,7 +78,7 @@ def js_slice(text, start, end):
 
 def test_response_combines_classification_search_and_verification():
     with patched():
-        resp = create_analysis(AnalyzeRequest(text=TEXT), None)
+        resp = create_analysis(AnalyzeRequest(text=TEXT), REQUEST, None)
 
     assert (resp.sentence_count, resp.check_worthy_count, resp.model) == (3, 2, "fake-model")
     found, failed, opinion = resp.claims
@@ -89,7 +104,7 @@ def test_response_combines_classification_search_and_verification():
 
 def test_judge_failure_marks_only_unverified_and_keeps_sources():
     with patched(judge=fake_judge_fails):
-        resp = create_analysis(AnalyzeRequest(text=TEXT), None)
+        resp = create_analysis(AnalyzeRequest(text=TEXT), REQUEST, None)
     found = resp.claims[0]
     assert found.verification_status == "unverified" and found.verification_error == "judge_failed"
     assert found.verification_confidence is None and found.verification_rationale is None
@@ -100,7 +115,7 @@ def test_judge_failure_marks_only_unverified_and_keeps_sources():
 
 def test_offsets_are_javascript_based_even_with_emoji_before_the_text():
     with patched():
-        resp = create_analysis(AnalyzeRequest(text=TEXT), None)
+        resp = create_analysis(AnalyzeRequest(text=TEXT), REQUEST, None)
     for c in resp.claims:
         assert js_slice(TEXT, c.start, c.end) == c.text
 
@@ -116,7 +131,7 @@ def test_default_is_not_saved_and_never_touches_the_db():
     route_module._try_save = lambda *a, **k: called.append(1) or ("saved", "x")
     try:
         with patched():
-            resp = create_analysis(AnalyzeRequest(text=TEXT), "a" * 64)  # 토큰이 있어도 save를 켜지 않으면 저장 안 함
+            resp = create_analysis(AnalyzeRequest(text=TEXT), REQUEST, "a" * 64)  # 토큰이 있어도 save를 켜지 않으면 저장 안 함
     finally:
         route_module._try_save = original
     assert called == [] and resp.save_status == "not_requested" and resp.analysis_id is None
@@ -124,7 +139,7 @@ def test_default_is_not_saved_and_never_touches_the_db():
 
 def test_save_requested_without_token_reports_no_token():
     with patched():
-        resp = create_analysis(AnalyzeRequest(text=TEXT, save=True), None)
+        resp = create_analysis(AnalyzeRequest(text=TEXT, save=True), REQUEST, None)
     assert resp.save_status == "no_token" and resp.analysis_id is None
     assert resp.check_worthy_count == 2  # 분석 결과 자체는 정상
 
@@ -139,7 +154,7 @@ def test_save_failure_does_not_lose_the_analysis_result():
     route_module.get_engine = broken_engine
     try:
         with patched():
-            resp = create_analysis(AnalyzeRequest(text=TEXT, save=True), "a" * 64)
+            resp = create_analysis(AnalyzeRequest(text=TEXT, save=True), REQUEST, "a" * 64)
     finally:
         route_module.get_engine = original
     assert resp.save_status == "failed" and resp.analysis_id is None
@@ -152,7 +167,7 @@ def test_saved_response_carries_the_analysis_id():
     route_module._try_save = lambda token_hash, text, data: ("saved", "11111111-1111-1111-1111-111111111111")
     try:
         with patched():
-            resp = create_analysis(AnalyzeRequest(text=TEXT, save=True), "a" * 64)
+            resp = create_analysis(AnalyzeRequest(text=TEXT, save=True), REQUEST, "a" * 64)
     finally:
         route_module._try_save = original
     assert resp.save_status == "saved" and resp.analysis_id == "11111111-1111-1111-1111-111111111111"

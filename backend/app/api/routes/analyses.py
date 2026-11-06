@@ -2,7 +2,7 @@ import logging
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, Request
 from sqlmodel import Session
 
 from app.api.deps import optional_token_hash, required_token_hash
@@ -16,14 +16,16 @@ from app.schemas.analysis import (
     AnalyzeResponse,
     DeleteResult,
 )
-from app.services import repository
-from app.services.pipeline import analyze_text
+from app.services import rate_limit, repository
+from app.services.pipeline import analyze_text, precheck
 from app.services.result_data import ResultData, from_outcome, to_response
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/analyses", tags=["analyses"])
 
+# 기록 조회/삭제는 IP당 분당 횟수를 가볍게 제한한다. (분석 요청은 라우트 안에서 따로 제한한다)
+HISTORY_LIMIT = [Depends(rate_limit.history_rate_limit)]
 TokenHash = Annotated[str, Depends(required_token_hash)]
 DbSession = Annotated[Session, Depends(get_session)]
 
@@ -51,7 +53,9 @@ def _try_save(token_hash: str | None, text: str, data: ResultData) -> tuple[str,
 
 @router.post("", response_model=AnalyzeResponse)
 def create_analysis(
-    body: AnalyzeRequest, token_hash: Annotated[str | None, Depends(optional_token_hash)]
+    body: AnalyzeRequest,
+    request: Request,
+    token_hash: Annotated[str | None, Depends(optional_token_hash)],
 ) -> AnalyzeResponse:
     """AI 답변을 문장별로 분석하고, 확인이 필요한 문장마다 위키백과 근거를 찾아 비교한다.
     body.save가 true이고 X-Anon-Token 헤더가 있을 때만 입력 원문과 결과를 DB에 저장한다.
@@ -59,7 +63,13 @@ def create_analysis(
     동기(def) 함수로 둔 이유: Claude SDK와 검색 호출이 동기 방식이라, FastAPI가 별도 스레드에서
     실행해 다른 요청을 막지 않게 하기 위해서다.
     """
-    outcome = analyze_text(body.text)
+    # 1) 잘못된 입력은 비용이 들지 않으므로 사용 횟수를 소모하기 전에 먼저 거른다.
+    precheck(body.text)
+    # 2) 동시 실행 슬롯 → 3) 횟수 확인과 사용 기록. 한도에 걸리면 슬롯을 바로 반납하고 429를 돌려준다.
+    ip = rate_limit.client_ip(request)
+    with rate_limit.limiter.analysis_slot():
+        rate_limit.limiter.admit_analysis(ip)
+        outcome = analyze_text(body.text)
     data = from_outcome(outcome)
     response = to_response(body.text, data)
     if body.save:
@@ -67,7 +77,7 @@ def create_analysis(
     return response
 
 
-@router.get("", response_model=list[AnalysisSummaryOut])
+@router.get("", response_model=list[AnalysisSummaryOut], dependencies=HISTORY_LIMIT)
 def list_my_analyses(
     token_hash: TokenHash,
     session: DbSession,
@@ -88,7 +98,7 @@ def list_my_analyses(
     ]
 
 
-@router.get("/{analysis_id}", response_model=AnalysisDetail)
+@router.get("/{analysis_id}", response_model=AnalysisDetail, dependencies=HISTORY_LIMIT)
 def get_my_analysis(analysis_id: UUID, token_hash: TokenHash, session: DbSession) -> AnalysisDetail:
     stored = repository.load_analysis(session, token_hash, analysis_id)
     if stored is None:  # 없는 기록이든 남의 기록이든 똑같이 404
@@ -101,7 +111,7 @@ def get_my_analysis(analysis_id: UUID, token_hash: TokenHash, session: DbSession
     )
 
 
-@router.delete("/{analysis_id}", response_model=DeleteResult)
+@router.delete("/{analysis_id}", response_model=DeleteResult, dependencies=HISTORY_LIMIT)
 def delete_my_analysis(analysis_id: UUID, token_hash: TokenHash, session: DbSession) -> DeleteResult:
     if not repository.delete_analysis(session, token_hash, analysis_id):
         raise AppError(404, "not_found", "해당 기록을 찾을 수 없습니다. 이미 삭제되었을 수 있습니다.")
@@ -109,7 +119,7 @@ def delete_my_analysis(analysis_id: UUID, token_hash: TokenHash, session: DbSess
     return DeleteResult(deleted=1)
 
 
-@router.delete("", response_model=DeleteResult)
+@router.delete("", response_model=DeleteResult, dependencies=HISTORY_LIMIT)
 def delete_all_my_analyses(token_hash: TokenHash, session: DbSession) -> DeleteResult:
     """내 기록 전체 삭제."""
     deleted = repository.delete_all(session, token_hash)

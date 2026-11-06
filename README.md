@@ -45,6 +45,14 @@ AI 답변을 문장별로 분석합니다. (현재는 DB에 저장하지 않음)
   - `RETENTION_DAYS`(기본 30일)가 지난 기록은 저장할 때 함께 정리됩니다(별도 스케줄러 없음). 삭제하면 하위 데이터가 함께 지워지고, 아무도 참조하지 않는 출처도 정리됩니다.
   - 한계: 브라우저 데이터를 지우거나 다른 기기를 쓰면 기록이 보이지 않습니다. 로그인 기능을 붙이면 토큰의 기록을 계정으로 옮깁니다.
   - 개인정보: 입력한 글은 분석을 위해 Anthropic(AI)으로, 검색어(핵심어)는 위키백과로 전송됩니다. 화면에도 안내합니다.
+- **호출 횟수 제한** (분석 1회에 Claude 비용이 든다. 실측 5문장 약 $0.03, 최대 약 $0.11)
+  - 기본값: IP당 분당 3회, IP당 24시간 20회, 전체 24시간 60회, 동시 분석 3개. 기록 조회/삭제는 IP당 분당 60회. 모두 `.env`에서 바꿉니다.
+  - 한도를 넘으면 429(+`Retry-After`)와 구분된 메시지: `rate_limited`(분당), `daily_limit_reached`(내 24시간), `service_daily_limit`(서비스 전체). 동시 실행이 가득 차면 503 `busy`.
+  - **24시간 한도는 DB(`usage_events`)에 기록**합니다. 서버가 재시작하거나 절전에서 깨어나도 유지되고, DB를 쓸 수 없으면 메모리 카운터로 계속 제한합니다. IP는 salt를 섞은 HMAC 해시로만 저장하며 이틀 지난 기록은 지웁니다.
+  - 잘못된 입력(빈 글 등)은 횟수를 소모하지 않습니다.
+  - `APP_ENV=production`에서는 `RATE_LIMIT_SALT`(16자 이상)를 설정하지 않으면 서버가 시작되지 않습니다. 배포 환경은 `TRUSTED_PROXY_COUNT`도 설정하세요(Render는 1로 시작해 확인).
+  - **운영에서는 서버를 반드시 `uvicorn app.main:app --no-proxy-headers ...`로 실행하세요.** 실측 결과, 이 옵션 없이 `TRUSTED_PROXY_COUNT=0`이면 uvicorn이 `X-Forwarded-For`를 믿고 주소를 바꿔서 같은 사람이 헤더만 바꿔 한도를 우회할 수 있었습니다.
+  - 한계: IP를 공유하는 사용자(학교, 회사)는 함께 제한됩니다. 전체 한도는 누군가 일부러 채워서 다른 사용자의 사용을 막을 수 있습니다(비용 상한이 목적). **Anthropic 콘솔에서 월 사용 한도도 직접 설정**해 두세요.
 - 근거 후보는 위키백과(CC BY-SA 4.0)입니다. 배포 전에 `SEARCH_USER_AGENT`에 연락처(저장소 URL 또는 이메일)를 넣어야 합니다. 위키미디어가 설명 있는 User-Agent를 요구합니다.
 - 오류 코드: `empty_input`, `input_too_long`, `no_sentences`, `too_many_sentences`, `invalid_request`, `invalid_json`, `analysis_refused`, `analysis_failed`, `llm_not_configured`, `llm_auth_error`, `llm_rate_limited`, `llm_timeout`, `llm_unavailable`, `llm_request_error`, `llm_error`
 - 수동 시험: `backend/scripts/try_classify.py`(실제 API 호출, 비용 발생), `backend/scripts/check_offsets.py`

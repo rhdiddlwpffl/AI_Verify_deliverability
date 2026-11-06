@@ -1,11 +1,12 @@
 import logging
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 from sqlalchemy import text
 
 from app.core.config import settings
 from app.core.errors import AppError
 from app.db.session import DatabaseNotConfiguredError, get_engine
+from app.services.rate_limit import history_rate_limit
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -17,7 +18,7 @@ def health() -> dict:
     return {"status": "ok", "env": settings.app_env}
 
 
-@router.get("/health/db")
+@router.get("/health/db", dependencies=[Depends(history_rate_limit)])  # DB를 건드리므로 가볍게 제한
 def health_db() -> dict:
     """DB에 실제로 연결되는지 확인한다. (SELECT 1 한 번)"""
     try:

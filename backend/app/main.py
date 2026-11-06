@@ -19,6 +19,7 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origin_list,
     allow_methods=["GET", "POST", "DELETE"],
+    expose_headers=["Retry-After"],  # 브라우저 스크립트가 '몇 초 후 재시도'를 읽을 수 있게 한다
     allow_headers=["*"],
 )
 

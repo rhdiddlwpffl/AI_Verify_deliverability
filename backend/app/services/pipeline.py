@@ -24,7 +24,7 @@ from app.models.enums import SearchStatus, VerificationStatus
 from app.services.claim_extractor import ClaimAnalysis, TokenUsage
 from app.services.evidence import Evidence, gather_evidence
 from app.services.searcher import get_provider
-from app.services.sentence_splitter import split_sentences
+from app.services.sentence_splitter import Sentence, split_sentences
 from app.services.verifier import JudgeResult, SourceVerdict, judge_claims
 
 logger = logging.getLogger(__name__)
@@ -85,13 +85,29 @@ def _llm_error(exc: Exception) -> AppError:
     return AppError(502, "llm_error", "AI 서비스에서 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.")
 
 
-def analyze_text(text: str) -> AnalysisOutcome:
+def precheck(text: str) -> list[Sentence]:
+    """AI를 호출하기 전에 할 수 있는 입력 검증. 통과하면 문장 목록을 돌려준다.
+
+    라우트가 이 검증을 호출 횟수 제한보다 먼저 실행한다. 잘못된 입력은 비용이 들지 않으므로
+    사용 횟수를 소모하지 않게 하려는 것이다.
+    """
     if not text.strip():
         raise AppError(422, "empty_input", "분석할 내용을 입력해 주세요.")
 
     sentences = split_sentences(text)
     if not sentences:
         raise AppError(422, "no_sentences", "분석할 문장을 찾지 못했습니다. 코드 블록이나 기호만 있는 입력은 분석하지 않습니다.")
+    if len(sentences) > settings.max_sentences:
+        raise AppError(
+            422,
+            "too_many_sentences",
+            f"문장이 {len(sentences)}개입니다. 한 번에 최대 {settings.max_sentences}개까지 분석할 수 있습니다.",
+        )
+    return sentences
+
+
+def analyze_text(text: str) -> AnalysisOutcome:
+    sentences = precheck(text)
 
     try:
         result = classify_sentences(sentences)

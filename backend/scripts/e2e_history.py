@@ -92,7 +92,14 @@ status, err = call("GET", f"/analyses/{analysis_id}", token)
 check("삭제 후 조회는 404", status == 404)
 status, res = call("DELETE", "/analyses", token)
 check("전체 삭제(남은 것 없음)", status == 200 and res == {"deleted": 0})
-check("하위 데이터와 출처까지 정리됨", all(db_count(f"select count(*) from {t}") == 0 for t in ("analyses", "claims", "claim_sources", "verifications", "sources")))
+# 개발 DB에는 다른 사람(예: 화면에서 직접 시험한 사용자)의 기록이 있을 수 있으므로, 테이블 전체가 비어 있는지가 아니라
+# '이 시험이 만든 데이터'만 정리됐는지 확인한다.
+check("이 시험의 기록이 모두 삭제됨", db_count("select count(*) from analyses where anon_token_hash = :t", t=sha) == 0)
+check("삭제한 분석의 문장/근거/검증 결과도 정리됨", db_count("select count(*) from claims where analysis_id = :i", i=analysis_id) == 0)
+check(
+    "아무도 참조하지 않는 출처가 남지 않음",
+    db_count("select count(*) from sources s where not exists (select 1 from claim_sources cs where cs.source_id = s.id)") == 0,
+)
 
 print("\n실패:", failed)
 sys.exit(1 if failed else 0)

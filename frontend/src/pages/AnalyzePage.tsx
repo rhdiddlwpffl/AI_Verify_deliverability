@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { analyze } from '../api/client'
+import { ApiError, analyze } from '../api/client'
 import type { AnalyzeResponse } from '../api/types'
 import { Disclaimer } from '../components/Disclaimer'
 import { HistoryPanel } from '../components/HistoryPanel'
@@ -11,10 +11,13 @@ import { SaveNotice } from '../components/SaveNotice'
 type Status =
   | { kind: 'idle' }
   | { kind: 'loading' }
-  | { kind: 'error'; message: string }
+  | { kind: 'error'; message: string; code: string | null }
   | { kind: 'done'; submittedText: string; result: AnalyzeResponse }
 
 type Tab = 'new' | 'history'
+
+// 서버가 24시간 사용 한도를 알려 주는 오류 코드. 이 경우에는 메시지에 대기 시간이 적혀 있다.
+const DAILY_LIMIT_CODES = new Set(['daily_limit_reached', 'service_daily_limit'])
 
 export function AnalyzePage() {
   const [tab, setTab] = useState<Tab>('new')
@@ -33,6 +36,7 @@ export function AnalyzePage() {
       setStatus({
         kind: 'error',
         message: e instanceof Error ? e.message : '알 수 없는 오류가 발생했습니다.',
+        code: e instanceof ApiError ? e.code : null,
       })
     }
   }
@@ -76,9 +80,12 @@ export function AnalyzePage() {
           {status.kind === 'error' && (
             <div role="alert" className="error">
               <p>⚠️ {status.message}</p>
-              <button type="button" onClick={() => void run()}>
-                다시 시도
-              </button>
+              {/* 24시간 한도를 모두 쓴 경우에는 바로 다시 시도해도 같은 결과라서 버튼을 보여 주지 않는다. */}
+              {!DAILY_LIMIT_CODES.has(status.code ?? '') && (
+                <button type="button" onClick={() => void run()}>
+                  다시 시도
+                </button>
+              )}
             </div>
           )}
         </div>
