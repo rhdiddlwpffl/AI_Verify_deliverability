@@ -294,18 +294,6 @@ class RateLimiter:
 limiter = RateLimiter.from_settings()
 
 
-def _mask(value: str) -> str:
-    parts = value.strip().split(".")
-    return ".".join(parts[:2] + ["x", "x"]) if len(parts) == 4 else value.strip()[:9] + "..."
-
-
 def history_rate_limit(request: Request) -> None:
-    # TEMP-DEBUG: 배포 환경의 헤더 구조 확인용. 확인 후 제거한다.
-    _xff = [_mask(x) for x in request.headers.get("x-forwarded-for", "").split(",") if x.strip()]
-    logging.getLogger("ipdebug").warning(
-        "xff=%s peer=%s cf=%s tci=%s chosen=%s", _xff, request.client.host if request.client else None,
-        _mask(request.headers.get("cf-connecting-ip", "-")), _mask(request.headers.get("true-client-ip", "-")),
-        _mask(client_ip(request)),
-    )
     """기록 조회/삭제, DB 확인 같은 가벼운 요청의 분당 제한 (FastAPI 의존성)."""
     limiter.check_history(client_ip(request))
