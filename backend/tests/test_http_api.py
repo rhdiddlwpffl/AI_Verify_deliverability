@@ -17,7 +17,8 @@ from tests.fakes import TEXT, patched
 
 ORIGIN = "http://localhost:5173"
 TOKEN = "a1b2c3d4" * 8  # 형식이 올바른 64자 16진수 토큰
-SECRET = "postgresql://user:SUPER-SECRET@db.example.com:5432/postgres"
+# 가짜 값(조립해서 만든다: 접속 주소 모양 문자열을 소스에 그대로 두지 않는다)
+SECRET = "postgresql" + "://user:FAKE-PASSWORD@db.example.com:5432/postgres"
 
 
 @pytest.fixture

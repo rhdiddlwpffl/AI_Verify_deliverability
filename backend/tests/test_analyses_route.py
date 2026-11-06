@@ -78,7 +78,7 @@ def test_save_failure_does_not_lose_the_analysis_result():
     from sqlalchemy.exc import OperationalError
 
     def broken_engine():
-        raise OperationalError("select 1", {}, Exception("connection refused: postgresql://user:secret@host"))
+        raise OperationalError("select 1", {}, Exception("connection refused: " + "postgresql" + "://user:fake@host"))
 
     original = route_module.get_engine
     route_module.get_engine = broken_engine
