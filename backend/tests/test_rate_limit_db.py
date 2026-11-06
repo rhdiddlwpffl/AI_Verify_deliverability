@@ -6,15 +6,18 @@ import time
 from contextlib import contextmanager
 from datetime import UTC, datetime, timedelta
 
+import pytest
 from sqlalchemy import delete, func
 from sqlmodel import Session, select
 
-from app.core.config import settings
 from app.core.errors import AppError
 from app.models import UsageEvent
 from app.services.rate_limit import RateLimiter
 
 SALT = "test-salt-test-salt"
+
+
+pytestmark = pytest.mark.db
 
 
 class Borrowed:
@@ -72,13 +75,7 @@ def count(session, *conditions):
     return session.exec(select(func.count()).select_from(UsageEvent).where(*conditions)).one()
 
 
-def skip():
-    return not settings.database_url
-
-
 def test_per_ip_daily_limit_is_enforced_by_the_database():
-    if skip():
-        return
     with db_session() as session:
         limiter = make_limiter(session, ip_per_day=2)
         key = limiter.ip_hash("203.0.113.5")
@@ -91,8 +88,6 @@ def test_per_ip_daily_limit_is_enforced_by_the_database():
 
 
 def test_global_daily_limit_is_enforced_by_the_database():
-    if skip():
-        return
     with db_session() as session:
         before = count(session)
         limiter = make_limiter(session, global_per_day=before + 3)
@@ -103,8 +98,6 @@ def test_global_daily_limit_is_enforced_by_the_database():
 
 def test_limit_survives_a_server_restart():
     """서버가 재시작/절전에서 깨어나 메모리가 초기화돼도 DB 기록으로 계속 제한한다. (이 설계의 핵심 이유)"""
-    if skip():
-        return
     with db_session() as session:
         first_run = make_limiter(session, ip_per_day=2)
         first_run.admit_analysis("203.0.113.5")
@@ -116,8 +109,6 @@ def test_limit_survives_a_server_restart():
 
 
 def test_events_older_than_24_hours_do_not_count_and_old_ones_are_purged():
-    if skip():
-        return
     with db_session() as session:
         limiter = make_limiter(session, ip_per_day=1)
         key = limiter.ip_hash("203.0.113.5")
@@ -135,16 +126,12 @@ def test_events_older_than_24_hours_do_not_count_and_old_ones_are_purged():
 
 
 def test_zero_limits_block_in_the_database_path_too():
-    if skip():
-        return
     with db_session() as session:
         expect_limit(lambda: make_limiter(session, ip_per_day=0).admit_analysis("1.1.1.1"), "daily_limit_reached")
         expect_limit(lambda: make_limiter(session, global_per_day=0).admit_analysis("1.1.1.1"), "service_daily_limit")
 
 
 def test_raw_ip_is_never_stored():
-    if skip():
-        return
     with db_session() as session:
         limiter = make_limiter(session)
         limiter.admit_analysis("203.0.113.5")
@@ -157,8 +144,6 @@ def test_concurrent_requests_cannot_exceed_the_limit():
     """동시에 들어온 요청들이 '아직 한도 안'이라고 함께 판단해서 한도를 넘는 일이 없어야 한다.
     (확인과 기록을 DB 락으로 한 번에 하나씩 처리하기 때문에 정확히 한도만큼만 통과한다)
     이 테스트만 실제로 커밋하므로, 끝에 직접 지운다."""
-    if skip():
-        return
     from app.db.session import get_engine
 
     limit, attempts = 4, 10

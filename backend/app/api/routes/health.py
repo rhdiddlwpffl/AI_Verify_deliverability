@@ -25,10 +25,10 @@ def health_db() -> dict:
         with get_engine().connect() as conn:
             conn.execute(text("SELECT 1"))
     except DatabaseNotConfiguredError:
-        raise AppError(503, "db_not_configured", "DATABASE_URL이 설정되지 않았습니다.")
+        raise AppError(503, "db_not_configured", "DATABASE_URL이 설정되지 않았습니다.") from None
     except Exception as exc:
         # 원인(예외 종류)은 서버 로그에만 남긴다.
         # 응답에는 넣지 않는다: 예외 메시지에 접속 주소나 계정 정보가 섞일 수 있다.
         logger.error("DB 연결 실패: %s", type(exc).__name__)
-        raise AppError(503, "db_unavailable", "DB에 연결할 수 없습니다.")
+        raise AppError(503, "db_unavailable", "DB에 연결할 수 없습니다.") from None
     return {"status": "ok", "database": "connected"}

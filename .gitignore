@@ -23,3 +23,9 @@ Thumbs.db
 # 평가 산출물(재현 가능). 결과 파일과 위키백과 발췌문 캐시는 올리지 않는다
 backend/scripts/eval/results/
 backend/scripts/eval/evidence_cache.json
+
+# 테스트/린트 산출물
+.ruff_cache/
+.coverage
+htmlcov/
+frontend/coverage/

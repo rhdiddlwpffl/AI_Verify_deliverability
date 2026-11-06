@@ -1,12 +1,10 @@
 from logging.config import fileConfig
 
-from sqlalchemy import engine_from_config
-from sqlalchemy import pool
-
-from alembic import context
+from sqlalchemy import engine_from_config, pool
 from sqlmodel import SQLModel
 
 import app.models  # noqa: F401  (모든 모델을 불러와 SQLModel.metadata에 등록)
+from alembic import context
 from app.core.config import settings
 
 # this is the Alembic Config object, which provides

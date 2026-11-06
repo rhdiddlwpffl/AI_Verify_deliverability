@@ -1,0 +1,13 @@
+# 프로젝트의 린트 규칙. 환경마다 기본 규칙이 달라서 명시적으로 고정한다.
+line-length = 120
+target-version = "py312"
+extend-exclude = ["alembic/versions"]  # 자동 생성 파일
+
+[lint]
+# E4/E7/E9: 문법/구조 오류, F: 사용하지 않는 import·변수 등, B: 흔한 버그 패턴, I: import 정렬
+select = ["E4", "E7", "E9", "F", "B", "I"]
+
+[lint.per-file-ignores]
+# 스크립트는 sys.path를 먼저 설정한 뒤 import한다
+"scripts/**" = ["E402"]
+"tests/**" = ["B017"]

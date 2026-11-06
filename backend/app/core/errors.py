@@ -12,6 +12,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from sqlalchemy.exc import SQLAlchemyError
 from starlette.exceptions import HTTPException as StarletteHTTPException
+from starlette.middleware.base import BaseHTTPMiddleware
 
 from app.db.session import DatabaseNotConfiguredError
 
@@ -41,6 +42,20 @@ def _error_response(
     return JSONResponse(
         status_code=status_code, content={"error": {"code": code, "message": message}}, headers=headers
     )
+
+
+def _unexpected_error_response(exc: Exception) -> JSONResponse:
+    # 스택 트레이스는 서버 로그에만 남기고, 사용자에게는 일반적인 문구만 보낸다. (예외 원문에는 내부 정보가 있을 수 있다)
+    logger.error("처리되지 않은 오류: %s", type(exc).__name__, exc_info=exc)
+    return _error_response(500, "internal_error", "서버 내부 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.")
+
+
+class _CatchUnexpectedErrorsMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):  # type: ignore[no-untyped-def]
+        try:
+            return await call_next(request)
+        except Exception as exc:  # noqa: BLE001  모든 예상 못 한 예외를 500 JSON 응답으로 바꾼다
+            return _unexpected_error_response(exc)
 
 
 def register_exception_handlers(app: FastAPI) -> None:
@@ -78,5 +93,9 @@ def register_exception_handlers(app: FastAPI) -> None:
 
     @app.exception_handler(Exception)
     async def handle_unexpected_error(_: Request, exc: Exception) -> JSONResponse:
-        logger.exception("처리되지 않은 오류: %s", type(exc).__name__)
-        return _error_response(500, "internal_error", "서버 내부 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.")
+        return _unexpected_error_response(exc)
+
+    # 중요: 이 미들웨어는 CORS 미들웨어보다 '안쪽'에 있어야 한다. (main.py에서 이 함수를 CORS 추가보다 먼저 호출한다)
+    # 예상 못 한 예외를 FastAPI의 가장 바깥 계층(ServerErrorMiddleware)이 처리하면 응답이 CORS 계층을 거치지 않아
+    # CORS 헤더가 빠지고, 브라우저는 서버의 오류 문구 대신 '연결할 수 없음'만 보여 준다.
+    app.add_middleware(_CatchUnexpectedErrorsMiddleware)

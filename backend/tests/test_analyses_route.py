@@ -1,79 +1,9 @@
 """POST /analyses 라우트 함수를 직접 호출해서 응답 조립을 확인한다.
-분류, 검색, 비교는 모두 가짜로 바꿔 끼우므로 비용이 들지 않는다."""
-
-from contextlib import contextmanager
-from types import SimpleNamespace
+분류, 검색, 비교는 모두 가짜로 바꿔 끼우므로 비용이 들지 않는다. (가짜는 tests/fakes.py)"""
 
 from app.api.routes.analyses import create_analysis
 from app.schemas.analysis import AnalyzeRequest
-from app.services import pipeline, rate_limit
-from app.services.claim_extractor import ClaimAnalysis, ClassificationResult, TokenUsage
-from app.services.searcher import SearchResult, SearchUnavailableError
-from app.services.verifier import Judgment, JudgeResult, SourceVerdict
-
-TEXT = "😀 에펠탑은 1889년에 지어졌다. 이 문장은 검색이 실패한다. 정말 멋지다."
-REQUEST = SimpleNamespace(client=SimpleNamespace(host="203.0.113.9"), headers={})
-
-
-class AllowAllLimiter:
-    """이 파일의 테스트는 응답 조립을 보는 것이므로, 호출 횟수 제한은 항상 통과시킨다.
-    (제한 자체는 test_rate_limit.py에서 확인한다)"""
-
-    def admit_analysis(self, ip):
-        pass
-
-    @contextmanager
-    def analysis_slot(self):
-        yield
-
-
-def fake_classify(sentences):
-    plan = [
-        ("numeric", True, ["contains_number"], "에펠탑"),
-        ("factual", True, ["absolute_expression"], "실패검색어"),
-        ("opinion", False, ["absolute_expression"], ""),  # 확인 대상이 아닌데 신호가 붙은 경우
-    ]
-    claims = [ClaimAnalysis(s, t, w, f, "이유", q) for s, (t, w, f, q) in zip(sentences, plan, strict=True)]
-    return ClassificationResult(claims=claims, model="fake-model", usage=TokenUsage(1, 1))
-
-
-class FakeProvider:
-    def search(self, query):
-        if query == "실패검색어":
-            raise SearchUnavailableError("down")
-        return [
-            SearchResult("에펠탑", "https://ko.wikipedia.org/wiki/에펠탑", "에펠탑은 1889년에 건설되었다.", "wikipedia-ko"),
-            SearchResult("파리", "https://ko.wikipedia.org/wiki/파리", "파리는 프랑스의 수도이다.", "wikipedia-ko"),
-        ]
-
-
-def fake_judge_ok(items):
-    res = JudgeResult(model="fake-judge")
-    for idx, _claim, _results in items:
-        verdicts = [SourceVerdict(0, "supports", "에펠탑은 1889년에 건설되었다.", False), SourceVerdict(1, "neutral", "", True)]
-        res.judgments[idx] = Judgment(idx, verdicts, "supported", "medium", "발췌문에서 건설 연도가 확인됨")
-    return res
-
-
-def fake_judge_fails(items):
-    return JudgeResult(failed={idx: "judge_failed" for idx, _, _ in items}, model="fake-judge")
-
-
-@contextmanager
-def patched(judge=fake_judge_ok):
-    original = (pipeline.classify_sentences, pipeline.get_provider, pipeline.judge_claims, rate_limit.limiter)
-    pipeline.classify_sentences = fake_classify
-    pipeline.get_provider = lambda: FakeProvider()
-    pipeline.judge_claims = judge
-    rate_limit.limiter = AllowAllLimiter()
-    try:
-        yield
-    finally:
-        (pipeline.classify_sentences, pipeline.get_provider, pipeline.judge_claims, rate_limit.limiter) = original
-
-
-def js_slice(text, start, end):
-    return text.encode("utf-16-le")[start * 2 : end * 2].decode("utf-16-le")
+from tests.fakes import REQUEST, TEXT, fake_judge_fails, js_slice, patched
 
 
 def test_response_combines_classification_search_and_verification():

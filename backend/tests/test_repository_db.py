@@ -6,15 +6,18 @@ from contextlib import contextmanager
 from datetime import UTC, datetime, timedelta
 from uuid import uuid4
 
+import pytest
 from sqlalchemy import func, update
 from sqlmodel import Session, select
 
-from app.core.config import settings
 from app.models import Analysis, Claim, Source
 from app.services import repository
 from app.services.result_data import ClaimData, ResultData, SourceData
 
 TEXT = "에펠탑은 1889년에 지어졌다. 이 문장은 검색이 실패한다. 정말 멋지다. 비교가 실패한 문장이다. 없는 문장이다. 건너뛴 문장이다."
+
+
+pytestmark = pytest.mark.db
 
 
 @contextmanager
@@ -117,13 +120,7 @@ def count(session, model, *conditions):
     return session.exec(select(func.count()).select_from(model).where(*conditions)).one()
 
 
-def skip_if_no_db():
-    return not settings.database_url
-
-
 def test_roundtrip_restores_exactly_what_was_saved():
-    if skip_if_no_db():
-        return
     with db_session() as session:
         h, data = token_hash(), sample_data()
         analysis_id = repository.save_analysis(session, h, TEXT, data)
@@ -139,8 +136,6 @@ def test_roundtrip_restores_exactly_what_was_saved():
 
 
 def test_other_users_cannot_read_or_delete():
-    if skip_if_no_db():
-        return
     with db_session() as session:
         mine, other = token_hash(), token_hash()
         analysis_id = repository.save_analysis(session, mine, TEXT, sample_data())
@@ -154,8 +149,6 @@ def test_other_users_cannot_read_or_delete():
 
 
 def test_list_is_newest_first_with_counts_and_preview():
-    if skip_if_no_db():
-        return
     with db_session() as session:
         h = token_hash()
         first = repository.save_analysis(session, h, "첫 번째 입력입니다.\n\n" + "가" * 200, sample_data())
@@ -174,8 +167,6 @@ def test_list_is_newest_first_with_counts_and_preview():
 
 
 def test_same_source_url_is_shared_and_upserted():
-    if skip_if_no_db():
-        return
     with db_session() as session:
         h = token_hash()
         url_path = f"공유테스트-{uuid4().hex[:8]}"
@@ -193,8 +184,6 @@ def test_same_source_url_is_shared_and_upserted():
 
 
 def test_delete_cascades_and_keeps_shared_sources():
-    if skip_if_no_db():
-        return
     with db_session() as session:
         h = token_hash()
         shared, unique = f"공유-{uuid4().hex[:8]}", f"단독-{uuid4().hex[:8]}"
@@ -218,8 +207,6 @@ def test_delete_cascades_and_keeps_shared_sources():
 
 
 def test_delete_all_removes_only_my_analyses():
-    if skip_if_no_db():
-        return
     with db_session() as session:
         mine, other = token_hash(), token_hash()
         repository.save_analysis(session, mine, TEXT, sample_data())
@@ -234,8 +221,6 @@ def test_delete_all_removes_only_my_analyses():
 
 
 def test_cleanup_expired_respects_retention_and_zero_disables():
-    if skip_if_no_db():
-        return
     with db_session() as session:
         h = token_hash()
         old = repository.save_analysis(session, h, TEXT, sample_data())
@@ -253,8 +238,6 @@ def test_cleanup_expired_respects_retention_and_zero_disables():
 
 
 def test_empty_analysis_roundtrip():
-    if skip_if_no_db():
-        return
     with db_session() as session:
         h = token_hash()
         empty = ResultData(claims=[], model="m", model_info={"classification_model": "m"})

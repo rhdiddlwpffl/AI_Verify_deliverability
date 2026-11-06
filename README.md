@@ -24,6 +24,7 @@ AI 답변을 문장별로 나눠, 사실 확인이 필요한 주장과 근거가
 - [x] 8단계: 근거 비교와 상태 표시 (인용문 글자 단위 검증, 코드가 상태 계산, "검색된 출처 기준" 표현)
 - [x] 9단계: 분석 기록 저장/조회/삭제 (익명 토큰 해시, 기본 저장 꺼짐, 30일 자동 삭제)
 - [x] 10단계: 호출 횟수 제한, 위키백과 한도 대응, 샘플 답변, 접근성 점검, 모델 평가
+- [x] 11단계: 테스트 정리 (pytest, Vitest, 계약 테스트, 문구 가드, 린트, CI)
 
 ## API: `POST /analyses`
 AI 답변을 문장별로 분석합니다. (현재는 DB에 저장하지 않음)
@@ -92,6 +93,30 @@ py -m venv .venv                      # 최초 1회
 ```
 - 상태 확인: http://localhost:8000/health
 - API 문서: http://localhost:8000/docs
+
+## 테스트
+```
+# 백엔드 (backend 폴더에서)
+.venv\Scripts\python -m pip install -r requirements-dev.txt        # 최초 1회 (테스트 도구는 운영 의존성과 분리)
+.venv\Scripts\python -m pytest                                      # 전체. DATABASE_URL이 있으면 DB 통합 테스트도 실행
+.venv\Scripts\python -m pytest -m "not db"                          # DB 없이 (CI와 같은 조건)
+.venv\Scripts\python -m pytest -m db                                # DB 통합 테스트만
+.venv\Scripts\python -m pytest --cov=app --cov-report=term-missing  # 커버리지
+.venv\Scripts\python -m ruff check .                                # 린트
+
+# 프론트엔드 (frontend 폴더에서)
+npm run check                          # 린트 + 테스트 + 빌드를 한 번에 (올리기 전에 이것 하나)
+npm test                               # 테스트만
+node scripts/check-contrast.mjs        # 색 대비(WCAG) 점검
+```
+- 현재: 백엔드 179개(DB 통합 17개 포함, 커버리지 98%), 프론트 87개. DB 없이 돌리면 162개 통과 + 17개 **건너뜀**(1~2초).
+- **안전장치**: 테스트가 실수로 실제 Claude나 위키백과를 호출하면 실패합니다(`tests/conftest.py`). DB 통합 테스트는 트랜잭션 안에서 실행하고 롤백해서 DB에 데이터를 남기지 않습니다. DB가 없으면 조용히 통과하지 않고 "건너뜀"으로 표시됩니다.
+- **계약 테스트**(`frontend/src/contract.test.ts`): 백엔드 파이썬 소스를 직접 읽어서, 백엔드가 내보내는 상태·신호·유형·오류 코드마다 프론트에 한국어 이름과 처리가 있는지, 응답 필드가 타입 정의와 같은지, 두 곳에 적은 값(보관 기간 30일, 입력 상한 5,000자)이 같은지 확인합니다. 한쪽만 고치는 실수를 잡습니다.
+- **문구 가드**(`labels.test.ts`, `components.test.tsx`): 상태 이름에 "참/거짓/정확/틀림" 같은 판정 글자가 들어가면, 화면 어디에서든 확정 문장이 나오면, `https`가 아닌 링크가 만들어지면, 저장 체크박스 기본값이 바뀌면 실패합니다. 이 서비스의 핵심 원칙(검색된 출처 기준의 참고 정보)을 코드로 고정한 것입니다.
+- 비용이 드는 점검은 `pytest`에 **포함하지 않았습니다**: `backend/scripts/e2e_*.py`(실제 서버 end-to-end, 분석 1~2회), `backend/scripts/eval/`(모델 평가, 아래).
+- **테스트가 보증하지 않는 것**: (1) 실제 네트워크를 타는 함수(`searcher._urllib_fetch`)는 오프라인 테스트로 확인할 수 없어서 실제 위키백과로만 검증됩니다(과거에 httpx2가 403을 받았던 문제도 오프라인 테스트는 통과했습니다). (2) 화면은 브라우저 자동화 없이 문자열 렌더링으로만 확인하므로 레이아웃, 모양, 스크린 리더 동작은 직접 봐야 합니다. (3) 커버리지가 높아도 테스트가 맞는 것을 검사한다는 보증은 아닙니다. 그래서 핵심 테스트는 코드를 일부러 망가뜨려서 실제로 실패하는지 확인했습니다(변이 시험, 일회성 점검).
+- CI(`.github/workflows/ci.yml`): GitHub에 올리면 린트, 테스트, 마이그레이션 체인 검증, 빌드, 색 대비를 자동으로 돌립니다. **GitHub 위에서 직접 실행해 본 적은 없습니다.**
+- 줄바꿈은 `.gitattributes`로 LF에 고정합니다. (Windows에서 새로 받으면 CRLF가 되어, 소스를 줄 단위로 읽는 테스트가 깨진 적이 있습니다)
 
 ## 모델 평가 (Haiku 5.5 vs Sonnet 5.5)
 `backend/scripts/eval/`에 평가 세트와 실행 스크립트가 있습니다. 기본은 예상 비용만 출력하고 `--yes`를 줘야 Claude를 호출합니다.

@@ -318,7 +318,7 @@ def test_timeout_and_connection_errors_become_unavailable():
     for exc in (TimeoutError("timeout"), ConnectionResetError("reset"), OSError("network down")):
         calls = []
 
-        def fetch(url, params, headers, timeout, exc=exc):
+        def fetch(url, params, headers, timeout, exc=exc, calls=calls):
             calls.append(1)
             raise exc
 

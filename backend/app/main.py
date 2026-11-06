@@ -11,6 +11,7 @@ from app.core.errors import register_exception_handlers
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 
 app = FastAPI(title="Answer Auditor API")
+# 순서 주의: 오류 처리(내부에서 500용 미들웨어를 추가함)를 CORS보다 먼저 등록해야 500 응답에도 CORS 헤더가 붙는다.
 register_exception_handlers(app)
 
 # CORS: 브라우저는 다른 주소(프론트)의 API 호출을 기본적으로 막습니다.
