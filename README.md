@@ -25,6 +25,20 @@ AI 답변을 문장별로 나눠, 사실 확인이 필요한 주장과 근거가
 - [x] 9단계: 분석 기록 저장/조회/삭제 (익명 토큰 해시, 기본 저장 꺼짐, 30일 자동 삭제)
 - [x] 10단계: 호출 횟수 제한, 위키백과 한도 대응, 샘플 답변, 접근성 점검, 모델 평가
 - [x] 11단계: 테스트 정리 (pytest, Vitest, 계약 테스트, 문구 가드, 린트, CI)
+- [~] 12단계: 배포 (운영 Supabase, Render, Vercel 배포 완료. 운영 환경에서 IP별 분당 호출 제한이 의도대로 걸리는지는 **아직 확인되지 않음**, 아래 '배포' 참고)
+
+## 배포
+| 구성 | 위치 | 비고 |
+|---|---|---|
+| 프론트엔드 | Vercel, 루트 폴더 `frontend`, 환경변수 `VITE_API_BASE_URL`(끝에 `/` 없이) | https://ai-verify-deliverability.vercel.app |
+| 백엔드 | Render 무료 플랜, 설정은 `render.yaml`(Blueprint) | https://answer-auditor-api.onrender.com (`/health`, `/docs`) |
+| DB | Supabase 운영 프로젝트(개발용과 분리) | 마이그레이션은 `alembic upgrade head`로 직접 적용 |
+
+- 비밀값(`DATABASE_URL`, `ANTHROPIC_API_KEY`)은 Render 대시보드에만 입력합니다. `RATE_LIMIT_SALT`는 Render가 생성합니다. `CORS_ORIGINS`에는 Vercel 주소를 넣습니다.
+- **운영 DB 연결은 Transaction pooler(포트 6543)를 씁니다.** Session pooler(5432)는 동시 클라이언트 한도가 작아, 배포 후 가벼운 동시 요청에서도 `max clients reached in session mode`(503)가 났습니다(실측). 포트가 6543이면 코드가 psycopg의 준비된 쿼리를 자동으로 끕니다. 마이그레이션은 5432로 실행합니다.
+- 시작 명령에 `--no-proxy-headers`가 들어 있습니다(없으면 `X-Forwarded-For`로 호출 제한을 우회할 수 있음).
+- **확인되지 않은 것**: 운영에서 `TRUSTED_PROXY_COUNT`가 올바른지(Render는 Cloudflare 뒤에 있어 값을 실측해야 함). 기록 조회 100회를 보내도 모두 통과해 IP별 분당 제한이 운영에서 제대로 걸리지 않을 수 있습니다. 분석의 24시간 한도는 DB 기반이며 이 점검과는 별개입니다. Anthropic 콘솔의 월 사용 한도는 직접 설정해야 합니다.
+- 무료 플랜은 유휴 후 첫 요청이 느릴 수 있습니다.
 
 ## API: `POST /analyses`
 AI 답변을 문장별로 분석합니다. (현재는 DB에 저장하지 않음)
@@ -109,7 +123,7 @@ npm run check                          # 린트 + 테스트 + 빌드를 한 번�
 npm test                               # 테스트만
 node scripts/check-contrast.mjs        # 색 대비(WCAG) 점검
 ```
-- 현재: 백엔드 179개(DB 통합 17개 포함, 커버리지 98%), 프론트 87개. DB 없이 돌리면 162개 통과 + 17개 **건너뜀**(1~2초).
+- 현재: 백엔드 182개(DB 통합 17개 포함, 커버리지 98%는 11단계 시점 측정), 프론트 90개. DB 없이 돌리면 165개 통과 + 17개 **건너뜀**(1~2초).
 - **안전장치**: 테스트가 실수로 실제 Claude나 위키백과를 호출하면 실패합니다(`tests/conftest.py`). DB 통합 테스트는 트랜잭션 안에서 실행하고 롤백해서 DB에 데이터를 남기지 않습니다. DB가 없으면 조용히 통과하지 않고 "건너뜀"으로 표시됩니다.
 - **계약 테스트**(`frontend/src/contract.test.ts`): 백엔드 파이썬 소스를 직접 읽어서, 백엔드가 내보내는 상태·신호·유형·오류 코드마다 프론트에 한국어 이름과 처리가 있는지, 응답 필드가 타입 정의와 같은지, 두 곳에 적은 값(보관 기간 30일, 입력 상한 5,000자)이 같은지 확인합니다. 한쪽만 고치는 실수를 잡습니다.
 - **문구 가드**(`labels.test.ts`, `components.test.tsx`): 상태 이름에 "참/거짓/정확/틀림" 같은 판정 글자가 들어가면, 화면 어디에서든 확정 문장이 나오면, `https`가 아닌 링크가 만들어지면, 저장 체크박스 기본값이 바뀌면 실패합니다. 이 서비스의 핵심 원칙(검색된 출처 기준의 참고 정보)을 코드로 고정한 것입니다.
