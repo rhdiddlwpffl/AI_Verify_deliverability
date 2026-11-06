@@ -4,9 +4,15 @@ import type { AnalysisDetail, AnalysisSummary, AnalyzeResponse } from './types'
 // 백엔드 주소는 환경변수(VITE_API_BASE_URL)로 받는다.
 // 로컬 개발(npm run dev)에서만 값이 없을 때 localhost:8000을 쓰고,
 // 배포 빌드에서 값이 없으면 조용히 localhost로 가지 않고 오류로 드러낸다.
-const API_BASE_URL: string | undefined =
-  import.meta.env.VITE_API_BASE_URL ??
-  (import.meta.env.DEV ? 'http://localhost:8000' : undefined)
+// 주소 끝의 '/'는 지운다. 남기면 '.../' + '/analyses' 가 되어 404가 난다. (배포 대시보드에 주소를 복사해 넣을 때 흔한 실수)
+export function normalizeBaseUrl(value: string | undefined): string | undefined {
+  const trimmed = value?.trim().replace(/\/+$/, '')
+  return trimmed ? trimmed : undefined
+}
+
+const API_BASE_URL: string | undefined = normalizeBaseUrl(
+  import.meta.env.VITE_API_BASE_URL ?? (import.meta.env.DEV ? 'http://localhost:8000' : undefined),
+)
 
 // 분석 요청 제한 시간. Claude 호출(수 초)과 배포 서버가 깨어나는 시간을 감안해 넉넉하게 둔다.
 const REQUEST_TIMEOUT_MS = 90_000
