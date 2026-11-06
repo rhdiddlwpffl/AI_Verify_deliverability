@@ -5,6 +5,12 @@
 - 제공자를 바꾸거나 추가할 수 있도록 SearchProvider 인터페이스 뒤에 둔다.
 - 실패는 종류별 예외로 구분한다. (화면에서 '검색 실패'와 '근거 부족'을 다르게 보여 주기 위해)
 
+위키백과 요청 한도 대응 (2026-11 실측: 익명 요청은 한 번에 약 10개까지 허용되고, 넘으면 429와
+Retry-After 21~47초가 오며, 걸린 채로 계속 요청하면 대기 시간이 늘어난다):
+  - 속도 조절(토큰 버킷): 한도에 걸리기 전에 스스로 요청 속도를 맞춘다. 모든 스레드가 공유한다.
+  - 429 쿨다운: 걸리면 Retry-After 동안 요청을 보내지 않는다. 짧으면 기다리고, 길면 바로 '한도 초과'로 실패시킨다.
+  - 결과 캐시: 같은 검색어는 일정 시간 동안 위키백과에 다시 묻지 않는다.
+
 HTTP 클라이언트로 표준 라이브러리 urllib를 쓰는 이유:
   같은 URL과 헤더로 보냈을 때 httpx2는 위키미디어에서 403("로봇 정책")을 받았고
   urllib/http.client는 200을 받았다. (2026-11 시험. 정확한 원인은 확인하지 못함)
@@ -15,10 +21,12 @@ import http.client
 import json
 import logging
 import re
+import threading
 import time
 import unicodedata
 import urllib.error
 import urllib.request
+from collections import OrderedDict
 from collections.abc import Callable
 from dataclasses import dataclass
 from functools import lru_cache
@@ -34,7 +42,8 @@ _HANGUL = re.compile(r"[ㄱ-ㆎ가-힣]")
 _INVISIBLE = re.compile("[\u200b\u2060\ufeff]")
 _MAX_QUERY_CHARS = 200
 _MAX_ATTEMPTS = 2  # 첫 시도 + 1회 재시도
-_MAX_RETRY_WAIT_SECONDS = 5.0
+_DEFAULT_RETRY_AFTER_SECONDS = 5.0  # Retry-After 헤더가 없거나 숫자가 아닐 때
+_MAX_COOLDOWN_SECONDS = 120.0  # 서버가 아무리 길게 말해도 이 시간까지만 쉰다
 _TIMEOUT_SECONDS = 8.0
 _MAX_BODY_BYTES = 1_000_000
 
@@ -112,6 +121,92 @@ def _page_url(lang: str, title: str) -> str:
     return f"https://{lang}.wikipedia.org/wiki/{quote(title.replace(' ', '_'), safe='()_,!*~')}"
 
 
+class _Throttle:
+    """프로세스 전체가 공유하는 요청 속도 조절(토큰 버킷) + 429 쿨다운.
+
+    - burst개까지는 바로 보내고, 그 뒤에는 초당 refill_per_second개씩만 보낸다.
+    - 429를 받으면 Retry-After 동안은 요청을 보내지 않는다. (걸린 채 두드리면 대기 시간이 늘어난다)
+    - 기다려야 하는 시간이 max_wait를 넘으면 기다리지 않고 바로 SearchRateLimitedError를 낸다.
+    """
+
+    def __init__(
+        self,
+        *,
+        burst: int,
+        refill_per_second: float,
+        max_wait: float,
+        clock: Callable[[], float],
+        sleep: Callable[[float], None],
+    ) -> None:
+        self._burst = max(1, burst)
+        self._rate = max(refill_per_second, 1e-6)
+        self._max_wait = max_wait
+        self._clock = clock
+        self._sleep = sleep
+        self._lock = threading.Lock()
+        self._tokens = float(self._burst)
+        self._updated = clock()
+        self._blocked_until = 0.0
+
+    def acquire(self) -> None:
+        while True:
+            with self._lock:
+                now = self._clock()
+                self._tokens = min(float(self._burst), self._tokens + (now - self._updated) * self._rate)
+                self._updated = now
+                if now < self._blocked_until:
+                    wait = self._blocked_until - now
+                elif self._tokens < 1.0:
+                    wait = (1.0 - self._tokens) / self._rate
+                else:
+                    self._tokens -= 1.0
+                    return
+                if wait > self._max_wait:
+                    raise SearchRateLimitedError("검색 요청 한도에 걸려 기다릴 수 없습니다.")
+            self._sleep(wait)  # 락 밖에서 기다린다. 깨어나면 다시 확인한다(다른 스레드가 먼저 가져갔을 수 있다)
+
+    def note_rate_limited(self, retry_after: float) -> None:
+        """429를 받았다. Retry-After 동안 요청을 보내지 않는다."""
+        with self._lock:
+            # 토큰은 건드리지 않는다. 쿨다운 동안 자연히 채워지므로, 쿨다운이 끝나면 바로 다시 보낼 수 있다.
+            # (실측: Retry-After만큼 기다리면 한꺼번에 10개가 다시 허용됐다)
+            self._blocked_until = max(self._blocked_until, self._clock() + min(retry_after, _MAX_COOLDOWN_SECONDS))
+
+
+class _ResultCache:
+    """검색어 → 결과를 잠시 기억한다. 스레드 안전. 실패는 저장하지 않는다."""
+
+    def __init__(self, *, ttl: float, max_entries: int, clock: Callable[[], float]) -> None:
+        self._ttl = ttl
+        self._max = max(1, max_entries)
+        self._clock = clock
+        self._lock = threading.Lock()
+        self._items: OrderedDict[tuple[str, str], tuple[float, list[SearchResult]]] = OrderedDict()
+
+    def get(self, key: tuple[str, str]) -> list[SearchResult] | None:
+        if self._ttl <= 0:
+            return None
+        with self._lock:
+            entry = self._items.get(key)
+            if entry is None:
+                return None
+            expires, results = entry
+            if self._clock() >= expires:
+                del self._items[key]
+                return None
+            self._items.move_to_end(key)  # 최근에 쓴 것을 뒤로
+            return list(results)
+
+    def put(self, key: tuple[str, str], results: list[SearchResult]) -> None:
+        if self._ttl <= 0:
+            return
+        with self._lock:
+            self._items[key] = (self._clock() + self._ttl, list(results))
+            self._items.move_to_end(key)
+            while len(self._items) > self._max:
+                self._items.popitem(last=False)  # 가장 오래 안 쓴 것부터 버린다
+
+
 class WikipediaProvider:
     def __init__(
         self,
@@ -121,18 +216,39 @@ class WikipediaProvider:
         results: int | None = None,
         extract_chars: int | None = None,
         sleep: Callable[[float], None] = time.sleep,
+        clock: Callable[[], float] = time.monotonic,
+        burst: int | None = None,
+        refill_per_second: float | None = None,
+        max_wait: float | None = None,
+        cache_ttl: float | None = None,
+        cache_max_entries: int | None = None,
     ) -> None:
         self._fetch = fetch
         self._user_agent = user_agent or settings.search_user_agent
         self._results = results or settings.search_results_per_claim
         self._extract_chars = extract_chars or settings.search_extract_chars
         self._sleep = sleep
+        self._throttle = _Throttle(
+            burst=settings.search_burst if burst is None else burst,
+            refill_per_second=settings.search_refill_per_second if refill_per_second is None else refill_per_second,
+            max_wait=settings.search_max_wait_seconds if max_wait is None else max_wait,
+            clock=clock,
+            sleep=sleep,
+        )
+        self._cache = _ResultCache(
+            ttl=settings.search_cache_ttl_seconds if cache_ttl is None else cache_ttl,
+            max_entries=settings.search_cache_max_entries if cache_max_entries is None else cache_max_entries,
+            clock=clock,
+        )
 
     def search(self, query: str) -> list[SearchResult]:
         query = _clean_query(query)
         if not query:
             return []
         lang = detect_language(query)
+        cached = self._cache.get((lang, query))
+        if cached is not None:
+            return cached
         data = self._get_json(
             f"https://{lang}.wikipedia.org/w/api.php",
             {
@@ -168,34 +284,40 @@ class WikipediaProvider:
                     source=f"wikipedia-{lang}",
                 )
             )
+        self._cache.put((lang, query), results)
         return results
 
     def _get_json(self, url: str, params: dict[str, Any]) -> dict[str, Any]:
         last_error: SearchError = SearchUnavailableError("검색에 실패했습니다.")
         headers = {"User-Agent": self._user_agent, "Accept": "application/json"}
         for attempt in range(1, _MAX_ATTEMPTS + 1):
-            wait = 1.0
+            # 속도 조절과 쿨다운. 오래 기다려야 하면 여기서 SearchRateLimitedError가 나서 재시도 없이 바로 실패한다.
+            self._throttle.acquire()
             try:
                 response = self._fetch(url, params, headers, _TIMEOUT_SECONDS)
             except (OSError, http.client.HTTPException) as exc:  # 시간 초과, 연결 실패 등
                 last_error = SearchUnavailableError("검색 서버에 연결하지 못했습니다.")
                 logger.warning("검색 연결 오류 (시도 %d/%d): %s", attempt, _MAX_ATTEMPTS, type(exc).__name__)
-            else:
-                if response.status == 429:
-                    last_error = SearchRateLimitedError("검색 요청 한도를 넘었습니다.")
-                    wait = _retry_after_seconds(response.headers.get("retry-after"))
-                elif response.status >= 500:
-                    last_error = SearchUnavailableError("검색 서버 오류입니다.")
-                elif response.status >= 400:
-                    # 403(차단) 같은 거절은 재시도해도 소용없다.
-                    logger.error("검색 요청 거절: HTTP %d", response.status)
-                    raise SearchBadResponseError(f"검색 서버가 요청을 거절했습니다. (HTTP {response.status})")
-                else:
-                    return self._parse(response)
-                logger.warning("검색 응답 오류 (시도 %d/%d): HTTP %d", attempt, _MAX_ATTEMPTS, response.status)
+                if attempt < _MAX_ATTEMPTS:
+                    self._sleep(1.0)
+                continue
 
-            if attempt < _MAX_ATTEMPTS:
-                self._sleep(wait)
+            if response.status == 429:
+                # 쿨다운을 건다. 다음 시도(acquire)가 짧으면 기다리고, 길면 요청을 보내지 않고 바로 실패시킨다.
+                self._throttle.note_rate_limited(_retry_after_seconds(response.headers.get("retry-after")))
+                last_error = SearchRateLimitedError("검색 요청 한도를 넘었습니다.")
+                logger.warning("검색 응답 오류 (시도 %d/%d): HTTP 429", attempt, _MAX_ATTEMPTS)
+            elif response.status >= 500:
+                last_error = SearchUnavailableError("검색 서버 오류입니다.")
+                logger.warning("검색 응답 오류 (시도 %d/%d): HTTP %d", attempt, _MAX_ATTEMPTS, response.status)
+                if attempt < _MAX_ATTEMPTS:
+                    self._sleep(1.0)
+            elif response.status >= 400:
+                # 403(차단) 같은 거절은 재시도해도 소용없다.
+                logger.error("검색 요청 거절: HTTP %d", response.status)
+                raise SearchBadResponseError(f"검색 서버가 요청을 거절했습니다. (HTTP {response.status})")
+            else:
+                return self._parse(response)
         raise last_error
 
     def _parse(self, response: HttpResponse) -> dict[str, Any]:
@@ -209,6 +331,7 @@ class WikipediaProvider:
         if error:
             code = error.get("code") if isinstance(error, dict) else None
             if code in ("ratelimited", "maxlag"):
+                self._throttle.note_rate_limited(_DEFAULT_RETRY_AFTER_SECONDS)
                 raise SearchRateLimitedError("검색 요청 한도를 넘었습니다.")
             logger.error("검색 API 오류 코드: %s", code)
             raise SearchBadResponseError("검색 API가 오류를 반환했습니다.")
@@ -216,10 +339,11 @@ class WikipediaProvider:
 
 
 def _retry_after_seconds(header: str | None) -> float:
+    """Retry-After 헤더(초). 없거나 날짜 형식 등 숫자가 아니면 기본값."""
     try:
-        return min(max(float(header), 0.0), _MAX_RETRY_WAIT_SECONDS) if header else 1.0
+        return max(float(header), 0.0) if header else _DEFAULT_RETRY_AFTER_SECONDS
     except ValueError:
-        return 1.0  # Retry-After가 날짜 형식 등 숫자가 아닐 때
+        return _DEFAULT_RETRY_AFTER_SECONDS
 
 
 @lru_cache

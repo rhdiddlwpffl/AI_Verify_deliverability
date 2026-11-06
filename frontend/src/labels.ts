@@ -1,7 +1,7 @@
 import type { ClaimType, Stance, VerificationStatus } from './api/types'
 
 export const CLAIM_TYPE_LABEL: Record<ClaimType, string> = {
-  factual: '사실 주장',
+  factual: '사실관계 주장',
   numeric: '수치 주장',
   quote: '인용',
   opinion: '의견',

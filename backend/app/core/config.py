@@ -34,11 +34,19 @@ class Settings(BaseSettings):
     # Claude API 키. SDK는 .env를 읽지 않으므로 이 설정값을 클라이언트에 직접 넘긴다.
     anthropic_api_key: str = ""
     # 문장 분류에 쓰는 모델과 추론 강도. 분류는 단순 작업이라 강도를 낮게 시작한다.
-    extract_model: str = "claude-sonnet-5-5"
+    extract_model: str = "claude-haiku-5-5"  # 평가에서 Sonnet과 분류 성능이 동일했고 약 19배 저렴했다 (scripts/eval)
     extract_effort: str = "low"  # low | medium | high | xhigh | max
     # 위키백과 API 요청에 붙는 User-Agent. 위키미디어는 '설명이 담긴 User-Agent'를 요구하고,
     # 없으면 IP가 차단될 수 있다. 배포 전에 연락처(URL 또는 이메일)를 넣어야 한다.
     search_user_agent: str = "AnswerAuditor/0.1 (local development)"
+    # 위키백과 요청 속도 조절. 실측(2026-11): 익명 요청은 한 번에 약 10개까지 허용되고, 넘으면 429와
+    # Retry-After 21~47초가 오며, 걸린 채로 계속 요청하면 대기 시간이 늘어난다. 서버의 모든 사용자가
+    # 같은 IP를 공유하므로 이 한도도 함께 나눠 쓴다.
+    search_burst: int = 8  # 한꺼번에 보낼 수 있는 요청 수 (실측 허용량 10보다 낮게)
+    search_refill_per_second: float = 0.3  # 초당 보충되는 요청 수 (실측 지속 속도 약 0.4보다 낮게)
+    search_max_wait_seconds: float = 10.0  # 속도 조절 때문에 기다릴 수 있는 최대 시간. 넘으면 기다리지 않고 '검색 실패(한도)'
+    search_cache_ttl_seconds: int = 3600  # 같은 검색어의 결과를 다시 쓰는 시간 (0이면 캐시 안 함)
+    search_cache_max_entries: int = 500
     # 주장 하나당 가져올 검색 결과 수와, 결과마다 가져올 본문(도입부) 글자 수
     search_results_per_claim: int = 3
     search_extract_chars: int = 400
@@ -54,9 +62,9 @@ class Settings(BaseSettings):
     # '내 기록' 목록에서 한 번에 가져올 최대 개수
     history_page_size: int = 50
     # 한 번의 분석에서 검색할 최대 문장 수 / 동시에 보낼 검색 수 / 검색 단계 전체 제한 시간(초)
-    max_verify_claims: int = 20
+    max_verify_claims: int = 10  # 위키백과 한도(한 번에 약 10개)에 맞춘다. 신호가 많은 문장부터 우선 검증한다
     search_concurrency: int = 3
-    search_phase_timeout: float = 30.0
+    search_phase_timeout: float = 40.0  # 위키백과 속도 조절 때문에 연달아 분석하면 10개에 약 33초가 걸릴 수 있다(실측 28초)
     # 입력 글자 수 상한 (비용 폭주 방지)
     max_input_chars: int = 5000
     # 한 번에 분석할 수 있는 최대 문장 수 (비용 폭주 방지). 넘으면 자르지 않고 오류로 알린다.

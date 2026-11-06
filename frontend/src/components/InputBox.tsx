@@ -1,4 +1,5 @@
 import { MAX_INPUT_CHARS, RETENTION_DAYS, countChars } from '../api/types'
+import { SAMPLES } from '../samples'
 
 interface Props {
   value: string
@@ -32,6 +33,29 @@ export function InputBox({ value, onChange, save, onSaveChange, onSubmit, loadin
         aria-describedby="char-count privacy-note"
         aria-invalid={tooLong}
       />
+
+      <div className="samples">
+        <span className="muted">예시로 해 보기:</span>
+        {SAMPLES.map((sample) => (
+          <button
+            key={sample.id}
+            type="button"
+            className="link-button"
+            title={sample.description}
+            onClick={() => {
+              // 이미 쓴 내용이 있으면 덮어쓰기 전에 확인한다.
+              if (value.trim() !== '' && !window.confirm('입력창의 내용이 예시로 바뀝니다. 계속할까요?')) return
+              onChange(sample.text)
+            }}
+          >
+            {sample.label}
+          </button>
+        ))}
+      </div>
+      <p className="muted samples__note">
+        예시도 분석 1회로 계산됩니다(호출 횟수 제한). 결과는 실행할 때마다 조금 다를 수 있고, 모든 오류를 잡아내는
+        것은 아닙니다.
+      </p>
 
       {/* 입력이 어디로 전송되는지는 분석 전에 보여야 한다. */}
       <p id="privacy-note" className="muted privacy-note">

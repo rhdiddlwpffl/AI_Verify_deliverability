@@ -74,7 +74,7 @@ export function AnalyzePage() {
         <div aria-live="polite">
           {status.kind === 'loading' && (
             <p className="status">
-              분석 중입니다… 문장을 분류하고, 위키백과에서 근거를 찾고, 비교하느라 보통 10~20초 걸립니다.
+              분석 중입니다… 문장을 분류하고, 위키백과에서 근거를 찾고, 비교하느라 보통 10~20초 걸립니다. 연달아 분석하면 위키백과 요청 속도 조절 때문에 최대 약 1분까지 걸릴 수 있습니다.
             </p>
           )}
           {status.kind === 'error' && (

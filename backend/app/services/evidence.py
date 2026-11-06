@@ -30,6 +30,11 @@ class Evidence:
     results: list[SearchResult] = field(default_factory=list)
 
 
+def _priority(claim: ClaimAnalysis) -> int:
+    """검증 우선순위. 취약점 신호가 많을수록, 수치 주장일수록 먼저 확인할 가치가 크다."""
+    return len(claim.flags) + (1 if claim.claim_type == "numeric" else 0)
+
+
 def _search_one(provider: SearchProvider, query: str) -> Evidence:
     try:
         results = provider.search(query)
@@ -58,7 +63,12 @@ def gather_evidence(
     evidence = {c.sentence.idx: Evidence(SearchStatus.NOT_SEARCHED.value) for c in claims}
 
     checkable = [c for c in claims if c.check_worthy]
-    targets, skipped = checkable[:max_claims], checkable[max_claims:]
+    # 한 번에 검색할 수 있는 수가 제한되어 있다(위키백과 요청 한도). 앞에서부터 자르면 뒤쪽 문장이 항상 빠지므로,
+    # '다시 확인할 이유가 많은 문장'(취약점 신호가 많은 문장, 수치 주장)부터 고른다. 동점이면 앞 문장이 먼저다.
+    ranked = sorted(checkable, key=lambda c: (-_priority(c), c.sentence.idx))
+    chosen = {c.sentence.idx for c in ranked[:max_claims]}
+    targets = [c for c in checkable if c.sentence.idx in chosen]  # 화면 순서는 그대로 유지
+    skipped = [c for c in checkable if c.sentence.idx not in chosen]
     for c in skipped:
         evidence[c.sentence.idx] = Evidence(SearchStatus.SKIPPED.value)
     if not targets:

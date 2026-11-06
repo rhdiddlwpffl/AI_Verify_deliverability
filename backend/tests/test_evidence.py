@@ -93,6 +93,29 @@ def test_claims_over_the_limit_are_skipped_not_dropped():
     assert sorted(provider.calls) == ["q0", "q1", "q2"]  # 건너뛴 문장은 검색하지 않는다
 
 
+def test_limit_keeps_claims_with_the_most_reasons_to_check_not_just_the_first_ones():
+    # 앞에서부터 자르면 뒤쪽의 위험한 문장이 항상 빠진다. 신호가 많은 문장과 수치 주장을 먼저 고른다.
+    def flagged(idx, flags, claim_type="factual"):
+        c = claim(idx, f"q{idx}")
+        return ClaimAnalysis(c.sentence, claim_type, True, flags, "r", f"q{idx}")
+
+    claims = [
+        flagged(0, []),  # 우선순위 0
+        flagged(1, ["a"]),  # 1
+        flagged(2, []),  # 0
+        flagged(3, ["a", "b", "c"]),  # 3
+        flagged(4, [], "numeric"),  # 1 (수치 주장 가산)
+        flagged(5, ["a", "b"]),  # 2
+    ]
+    provider = FakeProvider({f"q{i}": [result(f"q{i}")] for i in range(6)})
+    ev = run(claims, provider, max_claims=3)
+    searched = sorted(i for i, e in ev.items() if e.status == "found")
+    # 3번(3점), 5번(2점)이 먼저 뽑히고, 1점짜리(1번, 4번) 중에서는 앞 문장인 1번이 뽑힌다. (동점이면 앞 문장 우선)
+    assert searched == [1, 3, 5]
+    assert [i for i, e in ev.items() if e.status == "skipped"] == [0, 2, 4]  # 건너뛴 문장도 표시된다
+    assert sorted(provider.calls) == ["q1", "q3", "q5"]
+
+
 def test_non_checkworthy_claims_do_not_count_toward_the_limit():
     provider = FakeProvider({"a": [result("a")], "b": [result("b")]})
     claims = [claim(0, "", False), claim(1, "a"), claim(2, "", False), claim(3, "b")]

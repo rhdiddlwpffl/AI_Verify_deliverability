@@ -3,6 +3,8 @@
   --fg: #1f2328;
   --muted: #59636e;
   --border: #d1d9e0;
+  /* 입력창·탭 버튼처럼 '조작하는 것'의 경계. 장식용 --border보다 진하게 해서 3:1 이상을 지킨다 */
+  --control-border: #6e7781;
   --card: #f6f8fa;
   --accent: #0969da;
   --accent-fg: #ffffff;
@@ -36,6 +38,7 @@
     --fg: #e6edf3;
     --muted: #9198a1;
     --border: #3d444d;
+    --control-border: #8b949e;
     --card: #151b23;
     --accent: #4493f8;
     --accent-fg: #0d1117;
@@ -132,7 +135,7 @@ textarea {
   font: inherit;
   color: inherit;
   background: var(--bg);
-  border: 1px solid var(--border);
+  border: 1px solid var(--control-border);
   border-radius: 8px;
   resize: vertical;
 }
@@ -331,7 +334,7 @@ button.mark {
   padding: 0.4rem 1rem;
   color: var(--fg);
   background: var(--card);
-  border: 1px solid var(--border);
+  border: 1px solid var(--control-border);
   border-radius: 8px;
   font-weight: 600;
 }
@@ -340,6 +343,20 @@ button.mark {
   color: var(--accent-fg);
   background: var(--accent);
   border-color: var(--accent);
+}
+
+.samples {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.25rem 1rem;
+  margin: 0.5rem 0 0;
+  font-size: 0.95rem;
+}
+
+.samples__note {
+  margin: 0.25rem 0 0;
+  font-size: 0.85rem;
 }
 
 .privacy-note {

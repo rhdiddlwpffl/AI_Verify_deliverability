@@ -23,6 +23,7 @@ AI 답변을 문장별로 나눠, 사실 확인이 필요한 주장과 근거가
 - [x] 7단계: 검색 근거 (위키백과 API: 검색어 생성, 주장별 병렬 검색, 화면에 근거 후보 표시)
 - [x] 8단계: 근거 비교와 상태 표시 (인용문 글자 단위 검증, 코드가 상태 계산, "검색된 출처 기준" 표현)
 - [x] 9단계: 분석 기록 저장/조회/삭제 (익명 토큰 해시, 기본 저장 꺼짐, 30일 자동 삭제)
+- [x] 10단계: 호출 횟수 제한, 위키백과 한도 대응, 샘플 답변, 접근성 점검, 모델 평가
 
 ## API: `POST /analyses`
 AI 답변을 문장별로 분석합니다. (현재는 DB에 저장하지 않음)
@@ -53,6 +54,10 @@ AI 답변을 문장별로 분석합니다. (현재는 DB에 저장하지 않음)
   - `APP_ENV=production`에서는 `RATE_LIMIT_SALT`(16자 이상)를 설정하지 않으면 서버가 시작되지 않습니다. 배포 환경은 `TRUSTED_PROXY_COUNT`도 설정하세요(Render는 1로 시작해 확인).
   - **운영에서는 서버를 반드시 `uvicorn app.main:app --no-proxy-headers ...`로 실행하세요.** 실측 결과, 이 옵션 없이 `TRUSTED_PROXY_COUNT=0`이면 uvicorn이 `X-Forwarded-For`를 믿고 주소를 바꿔서 같은 사람이 헤더만 바꿔 한도를 우회할 수 있었습니다.
   - 한계: IP를 공유하는 사용자(학교, 회사)는 함께 제한됩니다. 전체 한도는 누군가 일부러 채워서 다른 사용자의 사용을 막을 수 있습니다(비용 상한이 목적). **Anthropic 콘솔에서 월 사용 한도도 직접 설정**해 두세요.
+- **위키백과 요청 한도**(2026-11 실측): 익명 요청은 한 번에 약 10개까지 허용되고 지속 속도는 약 0.4개/초입니다. 넘으면 429와 `Retry-After` 21~47초가 오며, **걸린 채 계속 요청하면 대기 시간이 늘어납니다.** 서버의 모든 사용자가 같은 IP를 공유하므로 한도도 함께 나눠 씁니다.
+  - 대응: 요청 속도 조절(버스트 8, 초당 0.3개), 429 쿨다운(짧으면 기다리고 길면 요청 없이 즉시 실패), 검색 결과 1시간 캐시, **한 번에 검증하는 문장을 10개로 제한하고 취약점 신호가 많은 문장부터 선택**.
+  - 개선 전(20문장, 동시성 3)에는 20개 중 6~14개가 "검색 실패"였고, 개선 후(10문장)에는 3회 모두 10/10 성공했습니다. 다만 **연달아 분석하면 28초**까지 걸립니다.
+  - 한계: 연락처가 있는 User-Agent로 배포하면 한도가 달라질 수 있어 **배포 후 다시 측정**해야 합니다.
 - 근거 후보는 위키백과(CC BY-SA 4.0)입니다. 배포 전에 `SEARCH_USER_AGENT`에 연락처(저장소 URL 또는 이메일)를 넣어야 합니다. 위키미디어가 설명 있는 User-Agent를 요구합니다.
 - 오류 코드: `empty_input`, `input_too_long`, `no_sentences`, `too_many_sentences`, `invalid_request`, `invalid_json`, `analysis_refused`, `analysis_failed`, `llm_not_configured`, `llm_auth_error`, `llm_rate_limited`, `llm_timeout`, `llm_unavailable`, `llm_request_error`, `llm_error`
 - 수동 시험: `backend/scripts/try_classify.py`(실제 API 호출, 비용 발생), `backend/scripts/check_offsets.py`
@@ -87,3 +92,15 @@ py -m venv .venv                      # 최초 1회
 ```
 - 상태 확인: http://localhost:8000/health
 - API 문서: http://localhost:8000/docs
+
+## 모델 평가 (Haiku 5.5 vs Sonnet 5.5)
+`backend/scripts/eval/`에 평가 세트와 실행 스크립트가 있습니다. 기본은 예상 비용만 출력하고 `--yes`를 줘야 Claude를 호출합니다.
+```
+.venv\Scripts\python -X utf8 scripts\eval\fetch_evidence.py                      # 위키백과 발췌문을 고정(무료)
+.venv\Scripts\python -X utf8 scripts\eval\run_eval.py --stage all --runs 3          # 예상 비용 출력
+.venv\Scripts\python -X utf8 scripts\eval\run_eval.py --stage all --runs 3 --yes    # 실제 실행
+```
+- 평가 세트: 확인 대상 31문장(도입부로 확인되는 것, 같은 항목의 값이 틀린 것, 확인 못 하는 것, 시점이 다른 통계 함정, 숫자 한 끗 차이, 부정문 등)과 확인 대상이 아닌 7문장(의견, 제목, 인사, 질문, 예측, 지시문). **정답은 발췌문을 보고 작성자가 직접 정한 값**이라 주관이 섞여 있고, 문장 수가 적어(정확도 대상 29개) 작은 차이는 통계적으로 의미가 없습니다.
+- **분류**(확인 대상 구분, 검색어): 두 모델이 동일했습니다. 확인 대상 재현율 93/93, 아닌 문장 특이도 21/21(지시문 포함), 검색어로 정답 문서를 찾은 비율 87/90. Haiku가 약 19배 저렴하고 더 빨랐습니다.
+- **근거 비교**(같은 발췌문, 2회): Sonnet 58/58, Haiku(medium) 56/58, Haiku(low) 55/58. 없는 반박/근거를 만든 건수는 Sonnet과 Haiku(medium) 모두 0이었고, **Haiku(low)는 회차마다 결과가 달라지고(3/29) 핵심어만 겹치는 문장을 반박으로 착각한 경우가 1건** 있었습니다. Haiku(medium)는 틀린 주장 1건(연도만 다른 반박)을 놓쳤고, 출력이 길어 Sonnet보다 느렸습니다. 비용은 Haiku가 약 13배 저렴합니다.
+- 결론(2026-11, 사용자 결정): **분류는 Haiku 5.5, 근거 비교는 Sonnet 5.5(effort medium)**를 기본값으로 씁니다. 평가 세트가 작아 **확정은 아니며**, `EXTRACT_MODEL`, `JUDGE_MODEL`, `JUDGE_EFFORT`로 언제든 바꿀 수 있습니다. 분석 1회 최대 비용은 약 $0.05(검증 10문장 기준 추정)입니다.
