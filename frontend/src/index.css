@@ -80,6 +80,26 @@ h1 {
   font-size: 1.75rem;
 }
 
+.site-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.site-header__image {
+  flex: none;
+  width: 112px;
+  height: auto;
+  object-fit: contain;
+}
+
+@media (max-width: 480px) {
+  .site-header__image {
+    width: 72px;
+  }
+}
+
 h2 {
   margin: 2rem 0 0.5rem;
   font-size: 1.35rem;

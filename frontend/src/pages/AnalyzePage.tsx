@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { ApiError, analyze } from '../api/client'
 import type { AnalyzeResponse } from '../api/types'
+import heroImage from '../assets/hero.png'
 import { Disclaimer } from '../components/Disclaimer'
 import { HistoryPanel } from '../components/HistoryPanel'
 import { InputBox } from '../components/InputBox'
@@ -43,9 +44,13 @@ export function AnalyzePage() {
 
   return (
     <main className="page">
-      <header>
-        <h1>Answer Auditor</h1>
-        <p className="muted">AI 답변에서 다시 확인해 볼 문장을 찾아 표시합니다.</p>
+      <header className="site-header">
+        <div>
+          <h1>Answer Auditor</h1>
+          <p className="muted">AI 답변에서 다시 확인해 볼 문장을 찾아 표시합니다.</p>
+        </div>
+        {/* 장식용 그림이라 대체 텍스트는 비워 둔다(스크린 리더가 읽지 않음) */}
+        <img className="site-header__image" src={heroImage} alt="" width={112} height={112} />
       </header>
 
       <Disclaimer />
