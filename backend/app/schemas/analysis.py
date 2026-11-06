@@ -1,3 +1,5 @@
+from datetime import datetime
+
 from pydantic import BaseModel, Field
 
 from app.core.config import settings
@@ -6,10 +8,12 @@ from app.core.config import settings
 class AnalyzeRequest(BaseModel):
     # 글자 수 상한은 스키마 단계에서 막는다. (공백만 있는 입력은 서비스 단계에서 따로 처리)
     text: str = Field(max_length=settings.max_input_chars)
+    # true이고 X-Anon-Token 헤더가 있을 때만 입력 원문과 결과를 서버 DB에 저장한다. (기본: 저장 안 함)
+    save: bool = False
 
 
 class SourceOut(BaseModel):
-    """검색으로 찾은 근거 후보 문서. 이 문서가 주장을 뒷받침하는지는 아직 판단하지 않은 상태다."""
+    """검색으로 찾은 근거 후보 문서와, 그 발췌문을 주장과 비교한 결과."""
 
     title: str
     url: str
@@ -53,3 +57,29 @@ class AnalyzeResponse(BaseModel):
     sentence_count: int
     check_worthy_count: int
     model: str
+    # 저장 결과. not_requested(저장 안 함) | saved | failed(저장 실패, 분석 결과는 정상) | no_token(저장을 요청했지만 식별 정보 없음)
+    save_status: str = "not_requested"
+    analysis_id: str | None = None  # saved일 때만
+
+
+class AnalysisDetail(BaseModel):
+    """저장된 분석 하나. result는 분석 직후의 응답과 같은 형식이다."""
+
+    id: str
+    created_at: datetime
+    text: str  # 분석을 요청했던 원문. result 안의 start/end는 이 글 기준이다.
+    result: AnalyzeResponse
+
+
+class AnalysisSummaryOut(BaseModel):
+    id: str
+    created_at: datetime
+    preview: str  # 입력 원문의 앞부분
+    sentence_count: int
+    check_worthy_count: int
+    # 검증 상태별 문장 수. 예: {"supported": 2, "insufficient": 1} ('검색된 출처 기준'의 참고 정보)
+    status_counts: dict[str, int]
+
+
+class DeleteResult(BaseModel):
+    deleted: int

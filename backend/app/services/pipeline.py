@@ -47,6 +47,7 @@ class AnalysisOutcome:
     evidence: dict[int, Evidence]  # 문장 번호(idx) → 검색 결과
     verification: dict[int, ClaimVerification]  # 문장 번호(idx) → 비교 결과
     judge_usage: TokenUsage  # 비교 호출의 토큰 사용량 (비용 확인용)
+    judge_model: str = ""  # 비교에 쓴 모델
 
 
 def _verification_for(claim: ClaimAnalysis, ev: Evidence, judged: JudgeResult) -> ClaimVerification:
@@ -149,5 +150,9 @@ def analyze_text(text: str) -> AnalysisOutcome:
 
     verification = {c.sentence.idx: _verification_for(c, evidence[c.sentence.idx], judged) for c in result.claims}
     return AnalysisOutcome(
-        classification=result, evidence=evidence, verification=verification, judge_usage=judged.usage
+        classification=result,
+        evidence=evidence,
+        verification=verification,
+        judge_usage=judged.usage,
+        judge_model=judged.model,
     )

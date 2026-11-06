@@ -320,6 +320,102 @@ button.mark {
   font-size: 0.9rem;
 }
 
+/* ---- 탭 / 저장 / 내 기록 ---- */
+.tabs {
+  display: flex;
+  gap: 0.5rem;
+  margin: 1rem 0;
+}
+
+.tabs button {
+  padding: 0.4rem 1rem;
+  color: var(--fg);
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font-weight: 600;
+}
+
+.tabs button[aria-pressed='true'] {
+  color: var(--accent-fg);
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+.privacy-note {
+  margin: 0.5rem 0;
+  font-size: 0.9rem;
+}
+
+/* '.input-box label' 규칙보다 우선하도록 선택자를 구체적으로 쓴다 */
+.input-box .save-option {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  margin: 0.5rem 0;
+  font-size: 0.95rem;
+  font-weight: 400;
+}
+
+.save-option input {
+  margin-top: 0.35rem;
+}
+
+.save-notice {
+  margin: 1rem 0;
+  padding: 0.5rem 0.75rem;
+  background: var(--notice-bg);
+  border: 1px solid var(--notice-border);
+  border-radius: 8px;
+}
+
+.save-notice--warn {
+  background: var(--error-bg);
+  border-color: var(--error-border);
+  color: var(--error-fg);
+}
+
+.history__list {
+  display: grid;
+  gap: 0.75rem;
+  margin: 1rem 0;
+  padding: 0;
+  list-style: none;
+}
+
+.history__item {
+  padding: 0.75rem 1rem;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.history__date,
+.history__counts {
+  margin: 0;
+  font-size: 0.85rem;
+}
+
+.history__counts .chip {
+  margin-left: 0.4rem;
+}
+
+.history__preview {
+  margin: 0.25rem 0;
+  overflow-wrap: anywhere;
+}
+
+.history__actions {
+  display: flex;
+  gap: 1rem;
+}
+
+.history__opened {
+  margin-top: 1.5rem;
+  padding-top: 1rem;
+  border-top: 2px solid var(--border);
+}
+
 /* ---- 결과: 검증 상태 ----
    참/거짓처럼 보이는 초록/빨강은 쓰지 않는다. 색 외에 글자로도 구분된다. */
 .verification {

@@ -1,25 +1,8 @@
 import { useState } from 'react'
-import type { AnalyzeResponse, VerificationStatus } from '../api/types'
+import type { AnalyzeResponse } from '../api/types'
+import { SUMMARY_LABEL, SUMMARY_ORDER } from '../labels'
 import { ClaimCard } from './ClaimCard'
 import { HighlightedText } from './HighlightedText'
-
-const SUMMARY_ORDER: VerificationStatus[] = [
-  'supported',
-  'contradicted',
-  'mixed',
-  'insufficient',
-  'search_failed',
-  'unverified',
-]
-const SUMMARY_LABEL: Record<VerificationStatus, string> = {
-  supported: '뒷받침하는 내용 발견',
-  contradicted: '상충하는 내용 발견',
-  mixed: '엇갈림',
-  insufficient: '근거 부족',
-  search_failed: '검색 실패',
-  unverified: '검증하지 못함',
-  not_checkable: '검증 대상 아님',
-}
 
 interface Props {
   submittedText: string // 분석을 요청했던 원문. 위치(start/end)는 이 글 기준이다.

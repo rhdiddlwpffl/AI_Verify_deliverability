@@ -10,7 +10,10 @@ import logging
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
+from sqlalchemy.exc import SQLAlchemyError
 from starlette.exceptions import HTTPException as StarletteHTTPException
+
+from app.db.session import DatabaseNotConfiguredError
 
 logger = logging.getLogger(__name__)
 
@@ -50,6 +53,17 @@ def register_exception_handlers(app: FastAPI) -> None:
             if err.get("type") == "json_invalid":
                 return _error_response(400, "invalid_json", "요청 형식이 올바르지 않습니다.")
         return _error_response(422, "invalid_request", "요청 내용이 올바르지 않습니다. 입력을 확인해 주세요.")
+
+    @app.exception_handler(DatabaseNotConfiguredError)
+    async def handle_db_not_configured(_: Request, exc: DatabaseNotConfiguredError) -> JSONResponse:
+        logger.error("DATABASE_URL이 설정되지 않았습니다.")
+        return _error_response(503, "db_not_configured", "기록 기능이 아직 설정되지 않았습니다.")
+
+    @app.exception_handler(SQLAlchemyError)
+    async def handle_db_error(_: Request, exc: SQLAlchemyError) -> JSONResponse:
+        # 예외 메시지에는 접속 주소나 쿼리 내용이 섞일 수 있어 응답에 싣지 않는다. 종류만 로그에 남긴다.
+        logger.error("DB 오류: %s", type(exc).__name__)
+        return _error_response(503, "db_unavailable", "기록 저장소에 문제가 있어 요청을 처리하지 못했습니다. 잠시 후 다시 시도해 주세요.")
 
     @app.exception_handler(StarletteHTTPException)
     async def handle_http_exception(_: Request, exc: StarletteHTTPException) -> JSONResponse:

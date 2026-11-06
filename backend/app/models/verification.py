@@ -21,5 +21,7 @@ class Verification(SQLModel, table=True):
     status: str = Field(nullable=False)
     confidence: str | None = Field(default=None)
     rationale: str | None = Field(default=None, sa_type=Text)
+    # status가 unverified일 때 이유 코드: skipped | judge_failed | rate_limited | timeout | unavailable | error
+    error: str | None = Field(default=None)
     model: str | None = Field(default=None)
     created_at: datetime = created_at_field()

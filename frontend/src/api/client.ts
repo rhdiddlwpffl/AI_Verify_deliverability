@@ -1,4 +1,5 @@
-import type { AnalyzeResponse } from './types'
+import { getAnonToken } from '../lib/anonToken'
+import type { AnalysisDetail, AnalysisSummary, AnalyzeResponse } from './types'
 
 // 백엔드 주소는 환경변수(VITE_API_BASE_URL)로 받는다.
 // 로컬 개발(npm run dev)에서만 값이 없을 때 localhost:8000을 쓰고,
@@ -32,15 +33,28 @@ function parseServerError(body: unknown): { code: string; message: string } | nu
   return typeof code === 'string' && typeof message === 'string' ? { code, message } : null
 }
 
-async function request<T>(path: string, init?: RequestInit): Promise<T> {
+interface RequestOptions {
+  method?: 'GET' | 'POST' | 'DELETE'
+  body?: unknown
+  // true이면 이 브라우저의 기록 식별 토큰을 X-Anon-Token 헤더로 보낸다. (기록을 저장/조회/삭제할 때만)
+  withToken?: boolean
+}
+
+async function request<T>(path: string, { method = 'GET', body, withToken = false }: RequestOptions = {}): Promise<T> {
   if (!API_BASE_URL) {
     throw new ApiError('API 주소(VITE_API_BASE_URL)가 설정되지 않았습니다.', 'not_configured')
   }
 
+  const headers: Record<string, string> = {}
+  if (body !== undefined) headers['Content-Type'] = 'application/json'
+  if (withToken) headers['X-Anon-Token'] = getAnonToken()
+
   let response: Response
   try {
     response = await fetch(`${API_BASE_URL}${path}`, {
-      ...init,
+      method,
+      headers,
+      body: body === undefined ? undefined : JSON.stringify(body),
       signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
     })
   } catch (e) {
@@ -55,13 +69,13 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   }
 
   if (!response.ok) {
-    let body: unknown = null
+    let errorBody: unknown = null
     try {
-      body = await response.json()
+      errorBody = await response.json()
     } catch {
       // JSON이 아닌 응답(프록시 오류 페이지 등)
     }
-    const serverError = parseServerError(body)
+    const serverError = parseServerError(errorBody)
     if (serverError) throw new ApiError(serverError.message, serverError.code, response.status)
     throw new ApiError(`서버가 오류를 반환했습니다. (HTTP ${response.status})`, 'http_error', response.status)
   }
@@ -77,10 +91,23 @@ export function getHealth(): Promise<HealthResponse> {
   return request<HealthResponse>('/health')
 }
 
-export function analyze(text: string): Promise<AnalyzeResponse> {
-  return request<AnalyzeResponse>('/analyses', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ text }),
-  })
+/** save가 true일 때만 토큰을 보내고 서버가 입력 원문과 결과를 저장한다. */
+export function analyze(text: string, save: boolean): Promise<AnalyzeResponse> {
+  return request<AnalyzeResponse>('/analyses', { method: 'POST', body: { text, save }, withToken: save })
+}
+
+export function listAnalyses(): Promise<AnalysisSummary[]> {
+  return request<AnalysisSummary[]>('/analyses', { withToken: true })
+}
+
+export function getAnalysis(id: string): Promise<AnalysisDetail> {
+  return request<AnalysisDetail>(`/analyses/${encodeURIComponent(id)}`, { withToken: true })
+}
+
+export function deleteAnalysis(id: string): Promise<{ deleted: number }> {
+  return request(`/analyses/${encodeURIComponent(id)}`, { method: 'DELETE', withToken: true })
+}
+
+export function deleteAllAnalyses(): Promise<{ deleted: number }> {
+  return request('/analyses', { method: 'DELETE', withToken: true })
 }

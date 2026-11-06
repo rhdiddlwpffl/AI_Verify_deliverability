@@ -33,6 +33,25 @@ export const VERIFICATION_LABEL: Record<VerificationStatus, string> = {
   not_checkable: '검증 대상 아님',
 }
 
+// 결과 요약과 '내 기록'에서 쓰는 짧은 이름. 모두 '검색된 출처 기준'이며 참/거짓 집계가 아니다.
+export const SUMMARY_ORDER: VerificationStatus[] = [
+  'supported',
+  'contradicted',
+  'mixed',
+  'insufficient',
+  'search_failed',
+  'unverified',
+]
+export const SUMMARY_LABEL: Record<VerificationStatus, string> = {
+  supported: '뒷받침하는 내용 발견',
+  contradicted: '상충하는 내용 발견',
+  mixed: '엇갈림',
+  insufficient: '근거 부족',
+  search_failed: '검색 실패',
+  unverified: '검증하지 못함',
+  not_checkable: '검증 대상 아님',
+}
+
 export const CONFIDENCE_LABEL: Record<string, string> = {
   high: '높음',
   medium: '보통',

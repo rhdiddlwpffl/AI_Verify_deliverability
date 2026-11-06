@@ -33,6 +33,10 @@ class Settings(BaseSettings):
     # 나눠서 보내면 한 번의 실패가 전체로 번지지 않고 응답도 빨라진다.
     judge_chunk_size: int = 8
     judge_concurrency: int = 2
+    # 저장된 분석 기록의 보관 일수. 저장할 때 이보다 오래된 기록을 함께 지운다. (0이면 자동 삭제 안 함)
+    retention_days: int = 30
+    # '내 기록' 목록에서 한 번에 가져올 최대 개수
+    history_page_size: int = 50
     # 한 번의 분석에서 검색할 최대 문장 수 / 동시에 보낼 검색 수 / 검색 단계 전체 제한 시간(초)
     max_verify_claims: int = 20
     search_concurrency: int = 3

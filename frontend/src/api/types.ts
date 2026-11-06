@@ -54,12 +54,39 @@ export interface Claim {
   verification_error: string | null // unverified일 때: skipped | judge_failed | rate_limited | timeout | unavailable | error
 }
 
+// not_requested: 저장하지 않음 / saved: 저장됨 / failed: 저장 실패(분석 결과는 정상)
+// no_token: 저장을 요청했지만 기록 식별 정보를 보내지 못함
+export type SaveStatus = 'not_requested' | 'saved' | 'failed' | 'no_token'
+
 export interface AnalyzeResponse {
   claims: Claim[]
   sentence_count: number
   check_worthy_count: number
   model: string
+  save_status: SaveStatus
+  analysis_id: string | null
 }
+
+// '내 기록' 목록의 한 줄
+export interface AnalysisSummary {
+  id: string
+  created_at: string // ISO 8601
+  preview: string
+  sentence_count: number
+  check_worthy_count: number
+  status_counts: Record<string, number> // 검증 상태별 문장 수 ('검색된 출처 기준')
+}
+
+// 저장된 분석 하나. result는 분석 직후의 응답과 같은 형식이고, 위치(start/end)는 text 기준이다.
+export interface AnalysisDetail {
+  id: string
+  created_at: string
+  text: string
+  result: AnalyzeResponse
+}
+
+// 서버의 보관 기간(backend의 RETENTION_DAYS)과 같아야 한다. 안내 문구에만 쓰인다.
+export const RETENTION_DAYS = 30
 
 // 백엔드의 입력 상한과 같아야 한다. (서버는 '글자 수(코드 포인트)'로 센다)
 export const MAX_INPUT_CHARS = 5000

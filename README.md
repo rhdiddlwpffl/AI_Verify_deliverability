@@ -22,6 +22,7 @@ AI 답변을 문장별로 나눠, 사실 확인이 필요한 주장과 근거가
 - [x] 6단계: 주장 추출 (문장 분리, Claude 분류, `POST /analyses`, 하이라이트 화면)
 - [x] 7단계: 검색 근거 (위키백과 API: 검색어 생성, 주장별 병렬 검색, 화면에 근거 후보 표시)
 - [x] 8단계: 근거 비교와 상태 표시 (인용문 글자 단위 검증, 코드가 상태 계산, "검색된 출처 기준" 표현)
+- [x] 9단계: 분석 기록 저장/조회/삭제 (익명 토큰 해시, 기본 저장 꺼짐, 30일 자동 삭제)
 
 ## API: `POST /analyses`
 AI 답변을 문장별로 분석합니다. (현재는 DB에 저장하지 않음)
@@ -37,6 +38,13 @@ AI 답변을 문장별로 분석합니다. (현재는 DB에 저장하지 않음)
 - 검증 필드: `verification_status`(`supported` 검색된 출처에서 뒷받침하는 내용 발견 / `contradicted` 상충하는 내용 발견 / `mixed` 엇갈림 / `insufficient` 근거 부족 / `search_failed` 검색 실패 / `unverified` 비교하지 못함 / `not_checkable` 검증 대상 아님), `verification_confidence`(근거 강도), `verification_rationale`, 출처별 `stance`/`quote`/`downgraded`. **확정 판정이 아니라 "검색된 출처 기준"의 참고 정보입니다.**
   - 최종 상태는 AI가 아니라 코드가 계산합니다. AI는 출처별 stance와 인용문만 돌려주고, 코드가 인용문이 발췌문에 실제로 있는지 글자 단위로 확인합니다. 없거나, 발췌문이 주장과 다른 대상/시점을 다루면(`same_scope=false`) 그 근거는 `neutral`로 낮춥니다.
   - 한계: 인용문이 발췌문에 있다는 것과 그 인용이 주장을 정말 뒷받침한다는 것은 다릅니다. 근거는 위키백과 문서의 앞부분(기본 400자)뿐이라 문서 뒷부분의 내용은 `insufficient`로 나옵니다.
+- **기록 저장/조회/삭제** (로그인 없이 브라우저의 익명 토큰으로 구분)
+  - 요청 헤더 `X-Anon-Token`: 브라우저가 만든 무작위 토큰(64자 16진수). 서버에는 **SHA-256 해시만** 저장하고 원본은 저장하지 않습니다.
+  - `POST /analyses`에 `{"save": true}` + 토큰이 있을 때만 입력 원문과 결과를 저장합니다. **기본은 저장 안 함**입니다. 응답의 `save_status`는 `not_requested | saved | failed | no_token`이고, 저장이 실패해도 분석 결과는 정상으로 돌려줍니다.
+  - `GET /analyses`(내 기록 목록), `GET /analyses/{id}`(분석 직후 응답과 같은 형식의 `result` 포함), `DELETE /analyses/{id}`, `DELETE /analyses`(내 기록 전체). 남의 기록이나 없는 기록은 모두 404입니다.
+  - `RETENTION_DAYS`(기본 30일)가 지난 기록은 저장할 때 함께 정리됩니다(별도 스케줄러 없음). 삭제하면 하위 데이터가 함께 지워지고, 아무도 참조하지 않는 출처도 정리됩니다.
+  - 한계: 브라우저 데이터를 지우거나 다른 기기를 쓰면 기록이 보이지 않습니다. 로그인 기능을 붙이면 토큰의 기록을 계정으로 옮깁니다.
+  - 개인정보: 입력한 글은 분석을 위해 Anthropic(AI)으로, 검색어(핵심어)는 위키백과로 전송됩니다. 화면에도 안내합니다.
 - 근거 후보는 위키백과(CC BY-SA 4.0)입니다. 배포 전에 `SEARCH_USER_AGENT`에 연락처(저장소 URL 또는 이메일)를 넣어야 합니다. 위키미디어가 설명 있는 User-Agent를 요구합니다.
 - 오류 코드: `empty_input`, `input_too_long`, `no_sentences`, `too_many_sentences`, `invalid_request`, `invalid_json`, `analysis_refused`, `analysis_failed`, `llm_not_configured`, `llm_auth_error`, `llm_rate_limited`, `llm_timeout`, `llm_unavailable`, `llm_request_error`, `llm_error`
 - 수동 시험: `backend/scripts/try_classify.py`(실제 API 호출, 비용 발생), `backend/scripts/check_offsets.py`

@@ -63,7 +63,7 @@ def js_slice(text, start, end):
 
 def test_response_combines_classification_search_and_verification():
     with patched():
-        resp = create_analysis(AnalyzeRequest(text=TEXT))
+        resp = create_analysis(AnalyzeRequest(text=TEXT), None)
 
     assert (resp.sentence_count, resp.check_worthy_count, resp.model) == (3, 2, "fake-model")
     found, failed, opinion = resp.claims
@@ -89,7 +89,7 @@ def test_response_combines_classification_search_and_verification():
 
 def test_judge_failure_marks_only_unverified_and_keeps_sources():
     with patched(judge=fake_judge_fails):
-        resp = create_analysis(AnalyzeRequest(text=TEXT))
+        resp = create_analysis(AnalyzeRequest(text=TEXT), None)
     found = resp.claims[0]
     assert found.verification_status == "unverified" and found.verification_error == "judge_failed"
     assert found.verification_confidence is None and found.verification_rationale is None
@@ -100,6 +100,59 @@ def test_judge_failure_marks_only_unverified_and_keeps_sources():
 
 def test_offsets_are_javascript_based_even_with_emoji_before_the_text():
     with patched():
-        resp = create_analysis(AnalyzeRequest(text=TEXT))
+        resp = create_analysis(AnalyzeRequest(text=TEXT), None)
     for c in resp.claims:
         assert js_slice(TEXT, c.start, c.end) == c.text
+
+
+# ------------------------------------------------------------ 저장 경로 (DB 없이 가짜로 확인)
+
+from app.api.routes import analyses as route_module  # noqa: E402
+
+
+def test_default_is_not_saved_and_never_touches_the_db():
+    called = []
+    original = route_module._try_save
+    route_module._try_save = lambda *a, **k: called.append(1) or ("saved", "x")
+    try:
+        with patched():
+            resp = create_analysis(AnalyzeRequest(text=TEXT), "a" * 64)  # 토큰이 있어도 save를 켜지 않으면 저장 안 함
+    finally:
+        route_module._try_save = original
+    assert called == [] and resp.save_status == "not_requested" and resp.analysis_id is None
+
+
+def test_save_requested_without_token_reports_no_token():
+    with patched():
+        resp = create_analysis(AnalyzeRequest(text=TEXT, save=True), None)
+    assert resp.save_status == "no_token" and resp.analysis_id is None
+    assert resp.check_worthy_count == 2  # 분석 결과 자체는 정상
+
+
+def test_save_failure_does_not_lose_the_analysis_result():
+    from sqlalchemy.exc import OperationalError
+
+    def broken_engine():
+        raise OperationalError("select 1", {}, Exception("connection refused: postgresql://user:secret@host"))
+
+    original = route_module.get_engine
+    route_module.get_engine = broken_engine
+    try:
+        with patched():
+            resp = create_analysis(AnalyzeRequest(text=TEXT, save=True), "a" * 64)
+    finally:
+        route_module.get_engine = original
+    assert resp.save_status == "failed" and resp.analysis_id is None
+    assert resp.check_worthy_count == 2 and resp.claims[0].verification_status == "supported"  # 결과는 그대로
+    assert "secret" not in resp.model_dump_json()  # 예외 내용(접속 정보)이 응답에 섞이지 않는다
+
+
+def test_saved_response_carries_the_analysis_id():
+    original = route_module._try_save
+    route_module._try_save = lambda token_hash, text, data: ("saved", "11111111-1111-1111-1111-111111111111")
+    try:
+        with patched():
+            resp = create_analysis(AnalyzeRequest(text=TEXT, save=True), "a" * 64)
+    finally:
+        route_module._try_save = original
+    assert resp.save_status == "saved" and resp.analysis_id == "11111111-1111-1111-1111-111111111111"
